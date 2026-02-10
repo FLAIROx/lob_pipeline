@@ -53,3 +53,5 @@ checkpoints/
 *.log
 tensorstore/
 wandb/
+# Generated HF indices files
+pipeline/.hf_indices_*.txt
