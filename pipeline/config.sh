@@ -36,3 +36,21 @@ fi
 # SLURM settings
 # ============================================================
 PARTITION="workq"
+
+# ============================================================
+# Notifications (optional)
+# ============================================================
+# ntfy.sh topics for job completion notifications
+# Leave empty to disable notifications
+# Set these to receive alerts when jobs complete:
+#   export NTFY_TOPIC_INFERENCE="my_inference_topic"
+#   export NTFY_TOPIC_BENCHMARKS="my_benchmarks_topic"
+
+NTFY_TOPIC_INFERENCE="${NTFY_TOPIC_INFERENCE:-}"
+NTFY_TOPIC_BENCHMARKS="${NTFY_TOPIC_BENCHMARKS:-}"
+
+# Alternative: Read from ~/.ntfy-topic if it exists
+if [ -z "$NTFY_TOPIC_INFERENCE" ] && [ -f ~/.ntfy-topic ]; then
+    NTFY_TOPIC_INFERENCE=$(cat ~/.ntfy-topic)
+    NTFY_TOPIC_BENCHMARKS=$(cat ~/.ntfy-topic)
+fi
