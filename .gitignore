@@ -1,0 +1,55 @@
+# Ignore user-specific config overrides
+pipeline/config.local.sh
+
+# Ignore results and outputs
+results_*/
+logs/*.out
+logs/*.err
+bench_data/*/
+
+# Ignore inference results
+LOBS5/inference_results/*/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Jupyter
+.ipynb_checkpoints
+*.ipynb
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data files
+*.npy
+*.npz
+*.pkl
+*.csv
+*.h5
+*.hdf5
+
+# Checkpoints (don't commit large model files)
+checkpoints/
+*.ckpt
+*.pth
+*.safetensors
+
+# Logs
+*.log
+tensorstore/
+wandb/
