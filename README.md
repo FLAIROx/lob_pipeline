@@ -109,8 +109,19 @@ This repo is shared among the `brics.s5e` group. All users in s5e can:
 - Create result directories
 - Access shared data
 
+## Notifications
+
+Notifications are **optional and user-configurable**. See [NOTIFICATIONS.md](NOTIFICATIONS.md) for setup.
+
+**Quick setup:**
+```bash
+export NTFY_TOPIC_INFERENCE="your_inference_topic"
+export NTFY_TOPIC_BENCHMARKS="your_benchmarks_topic"
+```
+
+By default, no notifications are sent (users must opt-in).
+
 ## Notes
 
 - Plotting may fail for spider plots (requires Chrome/Kaleido), but this is non-fatal
-- Notifications are sent to `isambard_inference_panfin` and `isambard_benchmarks_panfin`
 - All paths use `/lus/lfs1aip2/projects/s5e/` as the shared space
