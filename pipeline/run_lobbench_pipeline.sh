@@ -20,7 +20,7 @@ REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 NAME=""
 CHECKPOINT_STEP=""
 STOCKS="GOOG INTC"
-BATCH_SIZE=4
+BATCH_SIZE=64
 N_COND_MSGS=500
 N_GEN_MSGS=500
 NO_HF_COMPARE=0
@@ -43,7 +43,7 @@ if [ $# -lt 1 ]; then
     echo "  --name NAME                Run name (default: derived from checkpoint dirname)"
     echo "  --checkpoint_step N        Step to load (default: auto-detect latest)"
     echo "  --stocks \"GOOG INTC\"       Stocks to evaluate (default: \"GOOG INTC\")"
-    echo "  --batch_size N             Inference batch size (default: 4)"
+    echo "  --batch_size N             Inference batch size (default: 64)"
     echo "  --n_cond_msgs N            Conditioning messages (default: 500)"
     echo "  --n_gen_msgs N             Generated messages (default: 500)"
     echo "  --no_hf_compare            Custom mode: random sampling, no HF comparison"
@@ -98,7 +98,7 @@ fi
 
 # Auto-detect checkpoint step (latest numeric subdirectory)
 if [ -z "$CHECKPOINT_STEP" ]; then
-    CHECKPOINT_STEP=$(ls -1d "${CKPT_PATH}"/[0-9]* 2>/dev/null | sort -n | tail -1 | xargs basename 2>/dev/null || echo "")
+    CHECKPOINT_STEP=$(ls -1d "${CKPT_PATH}"/[0-9]* 2>/dev/null | xargs -I{} basename {} | sort -n | tail -1 || echo "")
     if [ -z "$CHECKPOINT_STEP" ]; then
         echo "ERROR: No checkpoint steps found in ${CKPT_PATH}"
         echo "  Use --checkpoint_step N to specify manually"
