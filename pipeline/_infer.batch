@@ -1,8 +1,9 @@
 #!/bin/bash
 #SBATCH --nodes=1
-#SBATCH --gpus=1
+#SBATCH --gpus=4
 
 # GPU inference batch script for LOBbench pipeline.
+# Launches 4 parallel processes (one per GPU) for ~4x speedup.
 # All parameters received via --export from run_lobbench_pipeline.sh:
 #   REPO_DIR, PYTHON, STOCK, DATA_DIR, CKPT_PATH, CHECKPOINT_STEP,
 #   RUN_NAME, BATCH_SIZE, N_COND_MSGS, N_GEN_MSGS, N_SEQUENCES,
@@ -21,7 +22,7 @@ export PYTHONUNBUFFERED=1
 SAVE_DIR="${REPO_DIR}/LOBS5/inference_results/${RUN_NAME}_${STOCK}_${SLURM_JOB_ID}"
 
 echo "=============================================="
-echo "LOBbench Pipeline: Inference"
+echo "LOBbench Pipeline: Inference (4-GPU parallel)"
 echo "=============================================="
 echo "Job ID:      ${SLURM_JOB_ID}"
 echo "Stock:       ${STOCK}"
@@ -52,7 +53,7 @@ if [ "$n_msg_files" -eq 0 ] && [ "$n_proc_files" -eq 0 ]; then
     exit 1
 fi
 
-# Build inference command
+# Build base inference command (without rank/world_size — those are added per-process)
 cd "${REPO_DIR}/LOBS5"
 
 CMD="$PYTHON -u run_inference.py \
@@ -65,7 +66,7 @@ CMD="$PYTHON -u run_inference.py \
     --n_sequences $N_SEQUENCES \
     --batch_size $BATCH_SIZE \
     --checkpoint_step $CHECKPOINT_STEP \
-    --test_split 1.0"
+    --test_split ${TEST_SPLIT:-1.0}"
 
 # HF mode: add sample indices file
 if [ -n "${SAMPLE_INDICES_FILE:-}" ] && [ -f "${SAMPLE_INDICES_FILE:-}" ]; then
@@ -73,15 +74,43 @@ if [ -n "${SAMPLE_INDICES_FILE:-}" ] && [ -f "${SAMPLE_INDICES_FILE:-}" ]; then
 fi
 
 echo ""
-echo "Running: ${CMD}"
+echo "Base command: ${CMD}"
 echo ""
 
-eval $CMD && EXIT_CODE=0 || EXIT_CODE=$?
+# Create save directory so all ranks can write logs
+mkdir -p "${SAVE_DIR}"
+
+# Launch one process per GPU
+WORLD_SIZE=4
+PIDS=()
+for RANK in $(seq 0 $((WORLD_SIZE - 1))); do
+    echo "Launching rank ${RANK} on GPU ${RANK}..."
+    CUDA_VISIBLE_DEVICES=$RANK \
+        eval $CMD --rank $RANK --world_size $WORLD_SIZE \
+        > "${SAVE_DIR}/log_rank${RANK}.txt" 2>&1 &
+    PIDS+=($!)
+done
+
+echo "PIDs: ${PIDS[*]}"
+echo "Waiting for all ranks to complete..."
+
+# Wait for all, track failures
+EXIT_CODE=0
+for i in "${!PIDS[@]}"; do
+    wait "${PIDS[$i]}" && RANK_EXIT=0 || RANK_EXIT=$?
+    if [ $RANK_EXIT -ne 0 ]; then
+        echo "ERROR: Rank ${i} (PID ${PIDS[$i]}) failed with exit code ${RANK_EXIT}"
+        EXIT_CODE=$RANK_EXIT
+    else
+        echo "Rank ${i} (PID ${PIDS[$i]}) completed successfully"
+    fi
+done
 
 echo ""
 echo "=============================================="
 if [ $EXIT_CODE -ne 0 ]; then
     echo "RESULT: FAILED (exit code $EXIT_CODE)"
+    echo "Check per-rank logs: ${SAVE_DIR}/log_rank*.txt"
 else
     echo "RESULT: SUCCESS"
     echo "Output: ${SAVE_DIR}"
