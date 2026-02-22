@@ -1,9 +1,9 @@
 #!/bin/bash
-#SBATCH --nodes=1
-#SBATCH --gpus=4
+#SBATCH --ntasks-per-node=1
+#SBATCH --gpus-per-node=4
 
 # GPU inference batch script for LOBbench pipeline.
-# Launches 4 parallel processes (one per GPU) for ~4x speedup.
+# Multi-node: srun launches one task per node, each spawns 4 GPU workers.
 # All parameters received via --export from run_lobbench_pipeline.sh:
 #   REPO_DIR, PYTHON, STOCK, DATA_DIR, CKPT_PATH, CHECKPOINT_STEP,
 #   RUN_NAME, BATCH_SIZE, N_COND_MSGS, N_GEN_MSGS, N_SEQUENCES,
@@ -22,8 +22,11 @@ export PYTHONNOUSERSITE=1  # prevent ~/.local jax-0.4.35 from shadowing conda ja
 
 SAVE_DIR="${REPO_DIR}/LOBS5/inference_results/${RUN_NAME}_${STOCK}_${SLURM_JOB_ID}"
 
+GPUS_PER_NODE=4
+WORLD_SIZE=$((SLURM_JOB_NUM_NODES * GPUS_PER_NODE))
+
 echo "=============================================="
-echo "LOBbench Pipeline: Inference (4-GPU parallel)"
+echo "LOBbench Pipeline: Inference (${SLURM_JOB_NUM_NODES} node(s), ${WORLD_SIZE} GPUs)"
 echo "=============================================="
 echo "Job ID:      ${SLURM_JOB_ID}"
 echo "Stock:       ${STOCK}"
@@ -81,31 +84,33 @@ echo ""
 # Create save directory so all ranks can write logs
 mkdir -p "${SAVE_DIR}"
 
-# Launch one process per GPU
-WORLD_SIZE=4
-PIDS=()
-for RANK in $(seq 0 $((WORLD_SIZE - 1))); do
-    echo "Launching rank ${RANK} on GPU ${RANK}..."
-    CUDA_VISIBLE_DEVICES=$RANK \
-        eval $CMD --rank $RANK --world_size $WORLD_SIZE \
-        > "${SAVE_DIR}/log_rank${RANK}.txt" 2>&1 &
-    PIDS+=($!)
-done
+# Launch via srun: one task per node, each spawns GPUS_PER_NODE workers
+echo "Launching ${WORLD_SIZE} ranks across ${SLURM_JOB_NUM_NODES} node(s)..."
 
-echo "PIDs: ${PIDS[*]}"
-echo "Waiting for all ranks to complete..."
-
-# Wait for all, track failures
-EXIT_CODE=0
-for i in "${!PIDS[@]}"; do
-    wait "${PIDS[$i]}" && RANK_EXIT=0 || RANK_EXIT=$?
-    if [ $RANK_EXIT -ne 0 ]; then
-        echo "ERROR: Rank ${i} (PID ${PIDS[$i]}) failed with exit code ${RANK_EXIT}"
-        EXIT_CODE=$RANK_EXIT
+srun bash -c "
+  NODE_RANK=\$SLURM_NODEID
+  PIDS=()
+  for LOCAL_RANK in \$(seq 0 $((GPUS_PER_NODE - 1))); do
+    GLOBAL_RANK=\$((NODE_RANK * $GPUS_PER_NODE + LOCAL_RANK))
+    echo \"[Node \$NODE_RANK] Launching rank \$GLOBAL_RANK on GPU \$LOCAL_RANK...\"
+    CUDA_VISIBLE_DEVICES=\$LOCAL_RANK \
+      eval $CMD --rank \$GLOBAL_RANK --world_size $WORLD_SIZE \
+      > \"${SAVE_DIR}/log_rank\${GLOBAL_RANK}.txt\" 2>&1 &
+    PIDS+=(\$!)
+  done
+  EXIT_CODE=0
+  for i in \${!PIDS[@]}; do
+    wait \${PIDS[\$i]} && RANK_EXIT=0 || RANK_EXIT=\$?
+    GLOBAL_RANK=\$((NODE_RANK * $GPUS_PER_NODE + i))
+    if [ \$RANK_EXIT -ne 0 ]; then
+      echo \"[Node \$NODE_RANK] ERROR: Rank \$GLOBAL_RANK (PID \${PIDS[\$i]}) failed with exit code \$RANK_EXIT\"
+      EXIT_CODE=\$RANK_EXIT
     else
-        echo "Rank ${i} (PID ${PIDS[$i]}) completed successfully"
+      echo \"[Node \$NODE_RANK] Rank \$GLOBAL_RANK (PID \${PIDS[\$i]}) completed successfully\"
     fi
-done
+  done
+  exit \$EXIT_CODE
+" && EXIT_CODE=0 || EXIT_CODE=$?
 
 echo ""
 echo "=============================================="
@@ -118,6 +123,7 @@ else
     for d in data_real data_gen data_cond; do
         echo "  ${d}/: $(ls "${SAVE_DIR}/${d}/"*message*.csv 2>/dev/null | wc -l) message files"
     done
+    echo "  Ranks: ${WORLD_SIZE} (${SLURM_JOB_NUM_NODES} node(s) x ${GPUS_PER_NODE} GPUs)"
 fi
 echo "=============================================="
 

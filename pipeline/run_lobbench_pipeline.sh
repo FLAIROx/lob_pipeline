@@ -25,6 +25,7 @@ N_COND_MSGS=500
 N_GEN_MSGS=500
 NO_HF_COMPARE=0
 N_SEQUENCES=1024
+INFER_NODES=4
 INFER_WALLTIME="06:00:00"
 BENCH_WALLTIME="24:00:00"
 SKIP_INFERENCE=0
@@ -48,6 +49,7 @@ if [ $# -lt 1 ]; then
     echo "  --n_gen_msgs N             Generated messages (default: 500)"
     echo "  --no_hf_compare            Custom mode: random sampling, no HF comparison"
     echo "  --n_sequences N            Custom mode only: number of sequences (default: 1024)"
+    echo "  --infer_nodes N            Inference nodes (default: 4, each has 4 GPUs)"
     echo "  --infer_walltime T         Inference walltime (default: 06:00:00)"
     echo "  --bench_walltime T         Benchmarking walltime (default: 24:00:00)"
     echo "  --skip_inference           Reuse existing inference (needs --inference_dir)"
@@ -68,6 +70,7 @@ while [ $# -gt 0 ]; do
         --n_gen_msgs)       N_GEN_MSGS="$2";       shift 2 ;;
         --no_hf_compare)    NO_HF_COMPARE=1;       shift 1 ;;
         --n_sequences)      N_SEQUENCES="$2";      shift 2 ;;
+        --infer_nodes)      INFER_NODES="$2";      shift 2 ;;
         --infer_walltime)   INFER_WALLTIME="$2";   shift 2 ;;
         --bench_walltime)   BENCH_WALLTIME="$2";   shift 2 ;;
         --skip_inference)   SKIP_INFERENCE=1;       shift 1 ;;
@@ -193,6 +196,7 @@ echo "=============================================="
 echo "Checkpoint: ${CKPT_PATH} (step ${CHECKPOINT_STEP})"
 echo "Mode: $([ "$NO_HF_COMPARE" -eq 1 ] && echo "Custom (${N_SEQUENCES} random)" || echo "HF (matched samples)")"
 echo "Config: ${N_COND_MSGS} cond + ${N_GEN_MSGS} gen, batch ${BATCH_SIZE}"
+echo "Infer:  ${INFER_NODES} node(s), $((INFER_NODES * 4)) GPUs"
 echo "=============================================="
 echo ""
 
@@ -221,6 +225,7 @@ for STOCK in $VALID_STOCKS; do
     # --------------------------------------------------------
     if [ "$SKIP_INFERENCE" -eq 0 ]; then
         INFER_JOB_ID=$(sbatch --parsable \
+            --nodes="${INFER_NODES}" \
             --job-name="infer_${NAME}_${STOCK}" \
             --time="${INFER_WALLTIME}" \
             --output="${LOGS_DIR}/infer_${NAME}_${STOCK}_%j.out" \
