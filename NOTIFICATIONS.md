@@ -50,7 +50,7 @@ NTFY_TOPIC_BENCHMARKS="my_benchmark_alerts"
 
 2. Create your ntfy.sh topic:
    - Go to https://ntfy.sh
-   - Choose a unique topic name (e.g., `aramis_lob_alerts_xk2p9`)
+   - Choose a unique topic name (e.g., `<name>_lob_alerts_xk2p9`)
    - Subscribe to it on your phone or browser
 
 3. Configure the pipeline to use your topic (see options above)
@@ -59,7 +59,7 @@ NTFY_TOPIC_BENCHMARKS="my_benchmark_alerts"
 
 - **Never commit your ~/.ntfy-topic to git**
 - **Use unique, hard-to-guess topic names** (ntfy.sh topics are public)
-- Example good topic: `aramis_lob_pipeline_dk39x2m`
+- Example good topic: `<name>_lob_pipeline_dk39x2m`
 - Example bad topic: `lob_alerts` (too common, others might guess it)
 
 ## Disabling Notifications
@@ -75,13 +75,13 @@ unset NTFY_TOPIC_BENCHMARKS
 
 ```bash
 # Set up once (add to ~/.bashrc for persistence)
-export NTFY_TOPIC_INFERENCE="aramis_inference_k3x9"
-export NTFY_TOPIC_BENCHMARKS="aramis_benchmarks_k3x9"
+export NTFY_TOPIC_INFERENCE="<name>_inference_k3x9"
+export NTFY_TOPIC_BENCHMARKS="<name>_benchmarks_k3x9"
 
 # Run pipeline - you'll get notified when jobs complete
 cd /lus/lfs1aip2/projects/s5e/lob_pipeline
 ./pipeline/run_lobbench_pipeline.sh \
     /lus/lfs1aip2/projects/s5e/quant/AlphaTrade/LOBS5/checkpoints/logical-serenity-19_4dhsl6me
 
-# Subscribe to your topics at https://ntfy.sh/aramis_inference_k3x9
+
 ```

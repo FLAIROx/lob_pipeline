@@ -8,7 +8,16 @@ logs/*.err
 bench_data/*/
 
 # Ignore inference results
-LOBS5/inference_results/*/
+LOBS5/inference_results/
+
+# Large data directories
+lob_bench/hf_data_git/
+LOBS5/AlphaTrade/
+bench_data/
+results_*/
+
+# Symlinks in bench_data
+bench_data/
 
 # Python
 __pycache__/
@@ -55,3 +64,4 @@ tensorstore/
 wandb/
 # Generated HF indices files
 pipeline/.hf_indices_*.txt
+core
