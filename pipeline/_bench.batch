@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --nodes=1
-#SBATCH --gpus=0
+#SBATCH --gpus=1
 
-# CPU scoring batch script for LOBbench pipeline.
+# Scoring batch script for LOBbench pipeline (1 GPU for JAX vmap bootstrap).
 # All parameters received via --export from run_lobbench_pipeline.sh:
 #   REPO_DIR, PYTHON, STOCK, RUN_NAME, INFER_OUTPUT, SKIP_HF_COMPARE
 

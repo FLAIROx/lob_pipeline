@@ -248,6 +248,9 @@ for STOCK in $VALID_STOCKS; do
 
     # --------------------------------------------------------
     # Bench job (depends on inference)
+    # TODO: Enable BENCH_SHARDED=1 by default and use --nodes=21
+    #       for 21-way parallel scoring (one metric per node with its own GPU).
+    #       Currently uses 1 node; sharded mode runs 21 procs on that node.
     # --------------------------------------------------------
     BENCH_JOB_ID=$(sbatch --parsable \
         ${DEPENDENCY} \

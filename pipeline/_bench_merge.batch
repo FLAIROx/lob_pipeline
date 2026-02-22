@@ -1,0 +1,60 @@
+#!/bin/bash
+#SBATCH --nodes=1
+#SBATCH --gpus=1
+#SBATCH --partition=workq
+#SBATCH --time=12:00:00
+
+# Merge sharded scores, run extended scoring, and plot.
+# Submitted as dependency on the array scoring job.
+#
+# Required env vars (via --export):
+#   REPO_DIR, PYTHON, STOCK, RUN_NAME, RUN_ID
+
+set -euo pipefail
+
+export TMPDIR="/tmp"
+export PYTHONUNBUFFERED=1
+export PYTHONNOUSERSITE=1
+export PYTHONPATH="/lus/lfs1aip2/projects/s5e/lob_pipeline/pip_packages${PYTHONPATH:+:$PYTHONPATH}"
+
+RESULTS_DIR="${REPO_DIR}/results_${RUN_NAME}"
+BENCH_DATA="${REPO_DIR}/bench_data"
+
+cd "${REPO_DIR}/lob_bench"
+
+# Phase 1: Merge shards
+echo "=== Merging unconditional shards ==="
+$PYTHON -u merge_shards.py \
+    "${RESULTS_DIR}/scores/scores_uncond_${STOCK}_${RUN_NAME}*_shard*_${RUN_ID}.pkl" \
+    -o "${RESULTS_DIR}/scores/scores_uncond_${STOCK}_${RUN_NAME}_${RUN_ID}.pkl"
+
+# Phase 2: Extended scoring (KS, time-lagged, contextual)
+echo ""
+echo "=== Extended scoring ==="
+$PYTHON -u run_bench.py \
+    --data_dir "$BENCH_DATA" \
+    --model_name "$RUN_NAME" \
+    --stock "$STOCK" \
+    --time_period 2023 \
+    --save_dir "$RESULTS_DIR" \
+    --all \
+    --progress_interval 120 2>&1 || echo "WARNING: Extended scoring failed (non-fatal)"
+
+# Phase 3: Plots
+echo ""
+echo "=== Plotting ==="
+mkdir -p "${RESULTS_DIR}/plots"
+$PYTHON -u run_plotting.py \
+    --score_dir "${RESULTS_DIR}/scores" \
+    --plot_dir "${RESULTS_DIR}/plots" \
+    --histograms 2>&1 || echo "WARNING: Plotting failed (non-fatal)"
+
+echo ""
+echo "=== ALL DONE ==="
+echo "Results: ${RESULTS_DIR}"
+ls -la "${RESULTS_DIR}/scores/"*"${STOCK}"* 2>/dev/null
+
+# Notify
+if [ -n "${NTFY_TOPIC_BENCHMARKS:-}" ] && command -v ~/bin/slurm-notify &> /dev/null; then
+    ~/bin/slurm-notify send "bench_${RUN_NAME}_${STOCK} (${SLURM_JOB_ID}) ALL DONE" --topic "$NTFY_TOPIC_BENCHMARKS"
+fi

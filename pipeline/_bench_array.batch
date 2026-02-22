@@ -1,0 +1,51 @@
+#!/bin/bash
+#SBATCH --nodes=1
+#SBATCH --gpus=1
+#SBATCH --partition=workq
+#SBATCH --time=04:00:00
+
+# Array scoring: each task scores one unconditional metric.
+# Submit with: sbatch --array=0-20 _bench_array.batch
+#
+# Required env vars (via --export):
+#   REPO_DIR, PYTHON, STOCK, RUN_NAME, RUN_ID
+
+set -euo pipefail
+
+export TMPDIR="/tmp"
+export PYTHONUNBUFFERED=1
+export PYTHONNOUSERSITE=1
+export PYTHONPATH="/lus/lfs1aip2/projects/s5e/lob_pipeline/pip_packages${PYTHONPATH:+:$PYTHONPATH}"
+
+ALL_UNCOND_METRICS=(
+    spread orderbook_imbalance log_inter_arrival_time log_time_to_cancel
+    ask_volume_touch bid_volume_touch ask_volume bid_volume
+    limit_ask_order_depth limit_bid_order_depth ask_cancellation_depth bid_cancellation_depth
+    limit_ask_order_levels limit_bid_order_levels ask_cancellation_levels bid_cancellation_levels
+    vol_per_min ofi ofi_up ofi_stay ofi_down
+)
+
+METRIC="${ALL_UNCOND_METRICS[$SLURM_ARRAY_TASK_ID]}"
+RESULTS_DIR="${REPO_DIR}/results_${RUN_NAME}"
+BENCH_DATA="${REPO_DIR}/bench_data"
+
+mkdir -p "${RESULTS_DIR}/scores"
+
+echo "=== Array task ${SLURM_ARRAY_TASK_ID}/20: ${METRIC} ==="
+echo "Job: ${SLURM_JOB_ID}, Model: ${RUN_NAME}, Stock: ${STOCK}"
+
+cd "${REPO_DIR}/lob_bench"
+
+$PYTHON -u run_bench.py \
+    --data_dir "$BENCH_DATA" \
+    --model_name "$RUN_NAME" \
+    --stock "$STOCK" \
+    --time_period 2023 \
+    --save_dir "$RESULTS_DIR" \
+    --uncond_only \
+    --metrics "$METRIC" \
+    --shard_id "$SLURM_ARRAY_TASK_ID" \
+    --run_id "$RUN_ID" \
+    --progress_interval 120
+
+echo "=== ${METRIC} DONE ==="
