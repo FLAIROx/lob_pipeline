@@ -11,6 +11,7 @@ set -euo pipefail
 # Login node's TMPDIR (/local/user/...) is invalid on compute nodes — always use /tmp
 export TMPDIR="/tmp"
 export PYTHONUNBUFFERED=1
+export PYTHONNOUSERSITE=1  # prevent ~/.local matplotlib (numpy 1.x) from shadowing conda env
 # Extra packages (statsmodels, plotly, kaleido) installed outside conda env due to quota limits
 export PYTHONPATH="/lus/lfs1aip2/projects/s5e/lob_pipeline/pip_packages${PYTHONPATH:+:$PYTHONPATH}"
 
