@@ -11,6 +11,8 @@ set -euo pipefail
 # Login node's TMPDIR (/local/user/...) is invalid on compute nodes — always use /tmp
 export TMPDIR="/tmp"
 export PYTHONUNBUFFERED=1
+# Extra packages (statsmodels, plotly, kaleido) installed outside conda env due to quota limits
+export PYTHONPATH="/lus/lfs1aip2/projects/s5e/lob_pipeline/pip_packages${PYTHONPATH:+:$PYTHONPATH}"
 
 BENCH_DATA="${REPO_DIR}/bench_data"
 RESULTS_DIR="${REPO_DIR}/results_${RUN_NAME}"
@@ -163,13 +165,28 @@ for MODEL in $MODELS_TO_SCORE; do
 
     echo ""
     echo "  Scoring ${MODEL} / ${STOCK} (${n_check} samples)..."
+
+    # Phase 4a: Unconditional scoring (baseline — must succeed)
+    echo "    [uncond] Running unconditional scoring..."
     $PYTHON -u run_bench.py \
         --data_dir "$BENCH_DATA" \
         --model_name "$MODEL" \
         --stock "$STOCK" \
         --time_period 2023 \
         --save_dir "$RESULTS_DIR" \
-        --uncond_only || { echo "  ERROR: ${MODEL}/${STOCK} scoring failed"; SCORE_ERRORS=$((SCORE_ERRORS + 1)); }
+        --uncond_only \
+        --progress_interval 120 || { echo "  ERROR: ${MODEL}/${STOCK} uncond scoring failed"; SCORE_ERRORS=$((SCORE_ERRORS + 1)); }
+
+    # Phase 4b: Extended metrics (KS + time-lagged + contextual — non-fatal)
+    echo "    [extended] Running all scoring modes (KS, time-lagged, contextual)..."
+    $PYTHON -u run_bench.py \
+        --data_dir "$BENCH_DATA" \
+        --model_name "$MODEL" \
+        --stock "$STOCK" \
+        --time_period 2023 \
+        --save_dir "$RESULTS_DIR" \
+        --all \
+        --progress_interval 120 2>&1 || { echo "  WARNING: ${MODEL}/${STOCK} extended scoring failed (non-fatal)"; }
 done
 
 # ============================================================
@@ -178,6 +195,7 @@ done
 echo ""
 echo "--- Phase 5: Plots ---"
 
+mkdir -p "${RESULTS_DIR}/plots"
 $PYTHON -u run_plotting.py \
     --score_dir "${RESULTS_DIR}/scores" \
     --plot_dir "${RESULTS_DIR}/plots" \
