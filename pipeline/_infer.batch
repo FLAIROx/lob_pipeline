@@ -18,6 +18,7 @@ export TMPDIR="/tmp"
 export XLA_PYTHON_CLIENT_PREALLOCATE=true
 export XLA_PYTHON_CLIENT_MEM_FRACTION=0.90
 export PYTHONUNBUFFERED=1
+export PYTHONNOUSERSITE=1  # prevent ~/.local jax-0.4.35 from shadowing conda jax-0.7.2
 
 SAVE_DIR="${REPO_DIR}/LOBS5/inference_results/${RUN_NAME}_${STOCK}_${SLURM_JOB_ID}"
 
