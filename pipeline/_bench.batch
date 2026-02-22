@@ -150,10 +150,31 @@ fi
 # ============================================================
 # Phase 4: Score
 # ============================================================
+# Supports two modes:
+#   1. Sequential (default): runs all metrics in a single process per model.
+#   2. Sharded (BENCH_SHARDED=1): partitions unconditional metrics across 21
+#      background processes, then merges. Much faster on multi-core nodes.
+#
+# For manual sharded scoring outside the pipeline:
+#   python run_bench.py --uncond_only --metrics "spread,orderbook_imbalance" \
+#       --shard_id 0 --run_id myrun --stock GOOG --model_name s5_main ...
+#   python merge_shards.py "results/scores/scores_uncond_*_shard*_myrun.pkl" \
+#       -o results/scores/scores_uncond_GOOG_s5_main_myrun.pkl
+# ============================================================
 echo ""
 echo "--- Phase 4: Scoring ---"
 
 cd "${REPO_DIR}/lob_bench"
+
+# All unconditional metric names (must match DEFAULT_SCORING_CONFIG keys in run_bench.py)
+ALL_UNCOND_METRICS=(
+    spread orderbook_imbalance log_inter_arrival_time log_time_to_cancel
+    ask_volume_touch bid_volume_touch ask_volume bid_volume
+    limit_ask_order_depth limit_bid_order_depth ask_cancellation_depth bid_cancellation_depth
+    limit_ask_order_levels limit_bid_order_levels ask_cancellation_levels bid_cancellation_levels
+    vol_per_min ofi ofi_up ofi_stay ofi_down
+)
+N_UNCOND=${#ALL_UNCOND_METRICS[@]}   # 21
 
 SCORE_ERRORS=0
 for MODEL in $MODELS_TO_SCORE; do
@@ -167,16 +188,56 @@ for MODEL in $MODELS_TO_SCORE; do
     echo ""
     echo "  Scoring ${MODEL} / ${STOCK} (${n_check} samples)..."
 
-    # Phase 4a: Unconditional scoring (baseline — must succeed)
-    echo "    [uncond] Running unconditional scoring..."
-    $PYTHON -u run_bench.py \
-        --data_dir "$BENCH_DATA" \
-        --model_name "$MODEL" \
-        --stock "$STOCK" \
-        --time_period 2023 \
-        --save_dir "$RESULTS_DIR" \
-        --uncond_only \
-        --progress_interval 120 || { echo "  ERROR: ${MODEL}/${STOCK} uncond scoring failed"; SCORE_ERRORS=$((SCORE_ERRORS + 1)); }
+    if [ "${BENCH_SHARDED:-0}" -eq 1 ]; then
+        # --- Sharded unconditional scoring ---
+        RUN_ID="bench_${SLURM_JOB_ID}"
+        echo "    [uncond-sharded] Launching ${N_UNCOND} metric shards..."
+        SHARD_PIDS=()
+        for i in "${!ALL_UNCOND_METRICS[@]}"; do
+            METRIC="${ALL_UNCOND_METRICS[$i]}"
+            $PYTHON -u run_bench.py \
+                --data_dir "$BENCH_DATA" \
+                --model_name "$MODEL" \
+                --stock "$STOCK" \
+                --time_period 2023 \
+                --save_dir "$RESULTS_DIR" \
+                --uncond_only \
+                --metrics "$METRIC" \
+                --shard_id "$i" \
+                --run_id "$RUN_ID" \
+                --progress_interval 120 &
+            SHARD_PIDS+=($!)
+        done
+
+        # Wait for all shards
+        SHARD_FAIL=0
+        for pid in "${SHARD_PIDS[@]}"; do
+            wait "$pid" || SHARD_FAIL=$((SHARD_FAIL + 1))
+        done
+
+        if [ "$SHARD_FAIL" -gt 0 ]; then
+            echo "  ERROR: ${SHARD_FAIL}/${N_UNCOND} uncond shards failed"
+            SCORE_ERRORS=$((SCORE_ERRORS + 1))
+        else
+            # Merge shards
+            echo "    [uncond-sharded] Merging ${N_UNCOND} shards..."
+            $PYTHON -u merge_shards.py \
+                "${RESULTS_DIR}/scores/scores_uncond_${STOCK}_${MODEL}*_shard*_${RUN_ID}.pkl" \
+                -o "${RESULTS_DIR}/scores/scores_uncond_${STOCK}_${MODEL}_${RUN_ID}.pkl" \
+                || { echo "  ERROR: merge failed"; SCORE_ERRORS=$((SCORE_ERRORS + 1)); }
+        fi
+    else
+        # --- Sequential unconditional scoring (original path) ---
+        echo "    [uncond] Running unconditional scoring..."
+        $PYTHON -u run_bench.py \
+            --data_dir "$BENCH_DATA" \
+            --model_name "$MODEL" \
+            --stock "$STOCK" \
+            --time_period 2023 \
+            --save_dir "$RESULTS_DIR" \
+            --uncond_only \
+            --progress_interval 120 || { echo "  ERROR: ${MODEL}/${STOCK} uncond scoring failed"; SCORE_ERRORS=$((SCORE_ERRORS + 1)); }
+    fi
 
     # Phase 4b: Extended metrics (KS + time-lagged + contextual — non-fatal)
     echo "    [extended] Running all scoring modes (KS, time-lagged, contextual)..."
