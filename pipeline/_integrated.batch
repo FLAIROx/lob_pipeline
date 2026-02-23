@@ -345,65 +345,176 @@ else
 fi
 
 # ============================================================
-# Phase 4: Merge + Extended Scoring
+# Phase 4: Merge Unconditional + Parallel Extended Scoring
 # ============================================================
 echo ""
 echo "--- Phase 4: Merge + Extended ---"
 
-# Switch to single-GPU mode for extended scoring on node 0
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
 export CUDA_VISIBLE_DEVICES=0
 
 SCORE_ERRORS=0
-for MODEL in $MODELS_TO_SCORE; do
-    # Check for shards from Phase 3
-    n_shards=$(ls "${RESULTS_DIR}/scores/scores_uncond_${STOCK}_${MODEL}"*"_shard"*"_${RUN_ID}.pkl" 2>/dev/null | wc -l)
+DIV_HORIZON=100
 
+# Extended metric definitions (must match DEFAULT_SCORING_CONFIG_* keys in run_bench.py)
+ALL_COND_METRICS=("ask_volume | spread" "spread | time" "spread | volatility")
+ALL_TIME_LAGGED_METRICS=("ask_volume | spread (t-lag=500)" "ask_volume_touch | ofi (t-lag=500)" "bid_volume_touch | ofi (t-lag=500)")
+ALL_CONTEXT_METRICS=("ask_volume | spread")
+ALL_DIV_METRICS=(
+    spread orderbook_imbalance log_inter_arrival_time log_time_to_cancel
+    ask_volume_touch bid_volume_touch ask_volume bid_volume
+    limit_ask_order_depth limit_bid_order_depth ask_cancellation_depth bid_cancellation_depth
+    limit_ask_order_levels limit_bid_order_levels ask_cancellation_levels bid_cancellation_levels
+    vol_per_min ofi ofi_up ofi_stay ofi_down
+)
+
+# Step 4a: Merge unconditional shards from Phase 3
+echo "  Merging unconditional shards..."
+for MODEL in $MODELS_TO_SCORE; do
+    n_shards=$(ls "${RESULTS_DIR}/scores/scores_uncond_${STOCK}_${MODEL}"*"_shard"*"_${RUN_ID}.pkl" 2>/dev/null | wc -l)
     if [ "$n_shards" -eq 0 ]; then
-        echo "  Skipping ${MODEL}: no shards found"
+        echo "  Skipping ${MODEL}: no uncond shards found"
         continue
     fi
-
-    echo "  Merging ${MODEL} (${n_shards} shards)..."
+    echo "  Merging ${MODEL} unconditional (${n_shards} shards)..."
     $PYTHON -u merge_shards.py \
         "${RESULTS_DIR}/scores/scores_uncond_${STOCK}_${MODEL}*_shard*_${RUN_ID}.pkl" \
         --output "${RESULTS_DIR}/scores/scores_uncond_${STOCK}_${MODEL}_${RUN_ID}.pkl" \
-        || { echo "  WARNING: merge failed for ${MODEL}"; SCORE_ERRORS=$((SCORE_ERRORS + 1)); }
-
-    if [ "${SKIP_EXTENDED:-0}" -eq 0 ]; then
-        echo "  Extended scoring: ${MODEL}..."
-        $PYTHON -u run_bench.py \
-            --data_dir "$BENCH_DATA" \
-            --model_name "$MODEL" \
-            --stock "$STOCK" \
-            --time_period 2023 \
-            --save_dir "$RESULTS_DIR" \
-            --all \
-            --progress_interval 120 2>&1 || { echo "  WARNING: Extended scoring failed for ${MODEL} (non-fatal)"; }
-    else
-        echo "  Extended scoring: SKIPPED (--skip_extended)"
-    fi
+        || { echo "  WARNING: uncond merge failed for ${MODEL}"; SCORE_ERRORS=$((SCORE_ERRORS + 1)); }
 done
 
+if [ "${SKIP_EXTENDED:-0}" -ne 0 ]; then
+    echo "  Extended scoring: SKIPPED (--skip_extended)"
+else
+    # Step 4b: Build extended task list (TSV: MODEL<tab>FLAG<tab>SHARD_ID<tab>METRIC)
+    EXT_TASK_FILE="${RESULTS_DIR}/.ext_tasks_${SLURM_JOB_ID}"
+    > "$EXT_TASK_FILE"
+    for MODEL in $MODELS_TO_SCORE; do
+        CHECK="${BENCH_DATA}/${MODEL}/${STOCK}/2023/data_real"
+        n_check=$(ls "${CHECK}"/*message*.csv 2>/dev/null | wc -l)
+        if [ "$n_check" -eq 0 ]; then
+            echo "  Skipping ${MODEL}: no real data"
+            continue
+        fi
+        for i in "${!ALL_COND_METRICS[@]}"; do
+            printf "%s\t--cond_only\t%s\t%s\n" "$MODEL" "$i" "${ALL_COND_METRICS[$i]}" >> "$EXT_TASK_FILE"
+        done
+        for i in "${!ALL_TIME_LAGGED_METRICS[@]}"; do
+            printf "%s\t--time_lagged_only\t%s\t%s\n" "$MODEL" "$i" "${ALL_TIME_LAGGED_METRICS[$i]}" >> "$EXT_TASK_FILE"
+        done
+        for i in "${!ALL_CONTEXT_METRICS[@]}"; do
+            printf "%s\t--context_only\t%s\t%s\n" "$MODEL" "$i" "${ALL_CONTEXT_METRICS[$i]}" >> "$EXT_TASK_FILE"
+        done
+        for i in "${!ALL_DIV_METRICS[@]}"; do
+            printf "%s\t--div_only\t%s\t%s\n" "$MODEL" "$i" "${ALL_DIV_METRICS[$i]}" >> "$EXT_TASK_FILE"
+        done
+    done
+
+    N_EXT_TASKS=$(wc -l < "$EXT_TASK_FILE")
+    if [ "$N_EXT_TASKS" -eq 0 ]; then
+        echo "  No extended tasks to run"
+    else
+        N_EXT_NODES=$((SLURM_JOB_NUM_NODES < N_EXT_TASKS ? SLURM_JOB_NUM_NODES : N_EXT_TASKS))
+        echo "  Extended tasks: ${N_EXT_TASKS} across ${N_EXT_NODES} nodes ($(echo $MODELS_TO_SCORE | wc -w) model(s))"
+
+        srun --nodes=${N_EXT_NODES} --ntasks=${N_EXT_NODES} --ntasks-per-node=1 \
+            bash -c "
+            export XLA_PYTHON_CLIENT_PREALLOCATE=false
+            export CUDA_VISIBLE_DEVICES=0
+            PROC_ID=\$SLURM_PROCID
+            N_PROCS=${N_EXT_NODES}
+
+            mapfile -t TASKS < \"${EXT_TASK_FILE}\"
+            N_TASKS=\${#TASKS[@]}
+
+            TASK_IDX=\$PROC_ID
+            DONE=0; FAIL=0
+            while [ \$TASK_IDX -lt \$N_TASKS ]; do
+                LINE=\${TASKS[\$TASK_IDX]}
+                MODEL=\$(cut -f1 <<< \"\$LINE\")
+                FLAG=\$(cut -f2 <<< \"\$LINE\")
+                SHARD_ID=\$(cut -f3 <<< \"\$LINE\")
+                METRIC=\$(cut -f4- <<< \"\$LINE\")
+
+                echo \"[Proc \$PROC_ID] \$MODEL / \$FLAG / \$METRIC (shard \$SHARD_ID)\"
+
+                ${PYTHON} -u run_bench.py \
+                    --data_dir \"${BENCH_DATA}\" \
+                    --model_name \"\$MODEL\" \
+                    --stock \"${STOCK}\" \
+                    --time_period 2023 \
+                    --save_dir \"${RESULTS_DIR}\" \
+                    \$FLAG \
+                    --metrics \"\$METRIC\" \
+                    --shard_id \"\$SHARD_ID\" \
+                    --run_id \"${RUN_ID}\" \
+                    --progress_interval 120 && \
+                    { echo \"[Proc \$PROC_ID] DONE: \$FLAG / \$METRIC\"; DONE=\$((DONE + 1)); } || \
+                    { echo \"[Proc \$PROC_ID] FAILED: \$FLAG / \$METRIC\"; FAIL=\$((FAIL + 1)); }
+
+                TASK_IDX=\$((TASK_IDX + N_PROCS))
+            done
+            echo \"[Proc \$PROC_ID] Finished: \$DONE ok, \$FAIL failed\"
+            [ \$DONE -gt 0 ] && exit 0 || exit 1
+        " && EXT_EXIT=0 || EXT_EXIT=$?
+        echo "  Extended scoring exit: ${EXT_EXIT}"
+
+        # Step 4c: Merge extended shards per model per type
+        echo "  Merging extended shards..."
+        for MODEL in $MODELS_TO_SCORE; do
+            n=$(ls "${RESULTS_DIR}/scores/scores_cond_${STOCK}_${MODEL}_shard"*"_${RUN_ID}.pkl" 2>/dev/null | wc -l)
+            [ "$n" -gt 0 ] && $PYTHON -u merge_shards.py \
+                "${RESULTS_DIR}/scores/scores_cond_${STOCK}_${MODEL}_shard*_${RUN_ID}.pkl" \
+                --output "${RESULTS_DIR}/scores/scores_cond_${STOCK}_${MODEL}_${RUN_ID}.pkl" \
+                2>&1 || echo "  WARNING: cond merge failed for ${MODEL}"
+
+            n=$(ls "${RESULTS_DIR}/scores/scores_time_lagged_${STOCK}_${MODEL}_shard"*"_${RUN_ID}.pkl" 2>/dev/null | wc -l)
+            [ "$n" -gt 0 ] && $PYTHON -u merge_shards.py \
+                "${RESULTS_DIR}/scores/scores_time_lagged_${STOCK}_${MODEL}_shard*_${RUN_ID}.pkl" \
+                --output "${RESULTS_DIR}/scores/scores_time_lagged_${STOCK}_${MODEL}_${RUN_ID}.pkl" \
+                2>&1 || echo "  WARNING: time_lagged merge failed for ${MODEL}"
+
+            n=$(ls "${RESULTS_DIR}/scores/scores_context_${STOCK}_${MODEL}_shard"*"_${RUN_ID}.pkl" 2>/dev/null | wc -l)
+            [ "$n" -gt 0 ] && $PYTHON -u merge_shards.py \
+                "${RESULTS_DIR}/scores/scores_context_${STOCK}_${MODEL}_shard*_${RUN_ID}.pkl" \
+                --output "${RESULTS_DIR}/scores/scores_context_${STOCK}_${MODEL}_${RUN_ID}.pkl" \
+                2>&1 || echo "  WARNING: context merge failed for ${MODEL}"
+
+            n=$(ls "${RESULTS_DIR}/scores/scores_div_${STOCK}_${MODEL}_shard"*"_${DIV_HORIZON}_${RUN_ID}.pkl" 2>/dev/null | wc -l)
+            [ "$n" -gt 0 ] && $PYTHON -u merge_shards.py \
+                "${RESULTS_DIR}/scores/scores_div_${STOCK}_${MODEL}_shard*_${DIV_HORIZON}_${RUN_ID}.pkl" \
+                --output "${RESULTS_DIR}/scores/scores_div_${STOCK}_${MODEL}_${DIV_HORIZON}_${RUN_ID}.pkl" \
+                2>&1 || echo "  WARNING: div merge failed for ${MODEL}"
+        done
+    fi
+    rm -f "$EXT_TASK_FILE"
+fi
+
 # ============================================================
-# Phase 5: Plots (with reference models for comparison)
+# Phase 5: Plots
 # ============================================================
 echo ""
 echo "--- Phase 5: Plots ---"
 
-# Build reference directory list: Symlinked-Scores (s5v2N1 etc.) + all existing results
-REF_ARGS=""
-for d in "${REPO_DIR}/Symlinked-Scores" "${REPO_DIR}"/results_*/scores; do
-    [ -d "$d" ] && REF_ARGS="${REF_ARGS} --reference_dir $d"
+# Build a clean staging dir: only merged (non-shard, non-hf) pkls for this run.
+# This keeps plots uncluttered — no shard fragments, no hf_matched baselines.
+CLEAN_SCORES="${RESULTS_DIR}/scores_clean"
+mkdir -p "${CLEAN_SCORES}"
+for f in "${RESULTS_DIR}/scores/"scores_*"_${STOCK}_"*"_integrated_"*".pkl"; do
+    fname="$(basename "$f")"
+    # Skip shard fragments and hf_matched variants
+    [[ "$fname" == *"_shard"* ]] && continue
+    [[ "$fname" == *"hf_"* ]] && continue
+    ln -sf "$f" "${CLEAN_SCORES}/${fname}"
 done
+echo "  Clean scores: $(ls "${CLEAN_SCORES}" | wc -l) files staged"
 
 mkdir -p "${RESULTS_DIR}/plots"
 $PYTHON -u run_plotting.py \
-    --score_dir "${RESULTS_DIR}/scores" \
+    --score_dir "${CLEAN_SCORES}" \
     --plot_dir "${RESULTS_DIR}/plots" \
     --histograms \
-    --filter_incomplete \
-    ${REF_ARGS} 2>&1 || echo "WARNING: Plotting failed (non-fatal)"
+    --filter_incomplete 2>&1 || echo "WARNING: Plotting failed (non-fatal)"
 
 # ============================================================
 # Summary
