@@ -260,13 +260,13 @@ cd "${REPO_DIR}/lob_bench"
 
 # All unconditional metric names (must match DEFAULT_SCORING_CONFIG keys in run_bench.py)
 ALL_UNCOND_METRICS=(
-    spread orderbook_imbalance log_inter_arrival_time
+    spread orderbook_imbalance log_inter_arrival_time log_time_to_cancel
     ask_volume_touch bid_volume_touch ask_volume bid_volume
     limit_ask_order_depth limit_bid_order_depth ask_cancellation_depth bid_cancellation_depth
     limit_ask_order_levels limit_bid_order_levels ask_cancellation_levels bid_cancellation_levels
     vol_per_min ofi ofi_up ofi_stay ofi_down
 )
-N_UNCOND=${#ALL_UNCOND_METRICS[@]}   # 20
+N_UNCOND=${#ALL_UNCOND_METRICS[@]}   # 21
 
 RUN_ID="integrated_${SLURM_JOB_ID}"
 
