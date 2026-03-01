@@ -24,6 +24,17 @@ export PYTHONNOUSERSITE=1  # prevent ~/.local packages from shadowing conda env
 # NOTE: PYTHONPATH for pip_packages is set AFTER inference (Phase 1) to avoid
 # pip_packages/numpy shadowing the conda numpy during inference.
 
+# Select encoding based on TOKEN_MODE (22tok or 24tok)
+TOKEN_MODE="${TOKEN_MODE:-24}"
+ENCODING_SRC="${REPO_DIR}/LOBS5/lob/encoding_${TOKEN_MODE}tok.py"
+ENCODING_DST="${REPO_DIR}/LOBS5/lob/encoding.py"
+if [ -f "$ENCODING_SRC" ]; then
+    cp "$ENCODING_SRC" "$ENCODING_DST"
+    echo "Token mode: ${TOKEN_MODE}tok ($(wc -l < "$ENCODING_SRC") lines)"
+else
+    echo "WARNING: ${ENCODING_SRC} not found, using existing encoding.py"
+fi
+
 BENCH_DATA="${REPO_DIR}/bench_data"
 RESULTS_DIR="${REPO_DIR}/results_${RUN_NAME}"
 HF_DATA="${REPO_DIR}/lob_bench/hf_data_git"
@@ -327,6 +338,7 @@ else
                 --metrics \"\$METRIC\" \
                 --shard_id \"\$SHARD_ID\" \
                 --run_id \"${RUN_ID}\" \
+                --n_workers 48 \
                 --progress_interval 120 && \
                 { echo \"[Proc \$PROC_ID] DONE: \$MODEL / \$METRIC\"; DONE=\$((DONE + 1)); } || \
                 { echo \"[Proc \$PROC_ID] FAILED: \$MODEL / \$METRIC\"; FAIL=\$((FAIL + 1)); }
@@ -448,6 +460,7 @@ else
                     --metrics \"\$METRIC\" \
                     --shard_id \"\$SHARD_ID\" \
                     --run_id \"${RUN_ID}\" \
+                    --n_workers 48 \
                     --progress_interval 120 && \
                     { echo \"[Proc \$PROC_ID] DONE: \$FLAG / \$METRIC\"; DONE=\$((DONE + 1)); } || \
                     { echo \"[Proc \$PROC_ID] FAILED: \$FLAG / \$METRIC\"; FAIL=\$((FAIL + 1)); }

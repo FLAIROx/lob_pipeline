@@ -31,6 +31,7 @@ TOTAL_NODES=""
 SKIP_INFERENCE=0
 SKIP_EXTENDED=0
 INFERENCE_DIR=""
+TOKEN_MODE=24
 
 # ============================================================
 # Parse arguments
@@ -56,6 +57,7 @@ if [ $# -lt 1 ]; then
     echo "  --skip_inference           Reuse existing inference (needs --inference_dir)"
     echo "  --inference_dir DIR        Path to existing inference results"
     echo "  --skip_extended            Skip extended scoring (contextual, time-lagged, divergence)"
+    echo "  --token_mode N             Token encoding mode: 22 or 24 (default: 24)"
     exit 1
 fi
 
@@ -78,6 +80,7 @@ while [ $# -gt 0 ]; do
         --skip_inference)   SKIP_INFERENCE=1;       shift 1 ;;
         --skip_extended)    SKIP_EXTENDED=1;        shift 1 ;;
         --inference_dir)    INFERENCE_DIR="$2";    shift 2 ;;
+        --token_mode)       TOKEN_MODE="$2";       shift 2 ;;
         --infer_walltime|--bench_walltime)
             echo "WARNING: $1 is deprecated. Use --walltime instead (single integrated job)."
             shift 2 ;;
@@ -215,6 +218,7 @@ echo "Mode: $([ "$NO_HF_COMPARE" -eq 1 ] && echo "Custom (${N_SEQUENCES} random)
 echo "Config: ${N_COND_MSGS} cond + ${N_GEN_MSGS} gen, batch ${BATCH_SIZE}"
 echo "Nodes: ${TOTAL_NODES} total (${INFER_NODES} for inference, up to ${TOTAL_NODES} for scoring)"
 echo "Extended: $([ "$SKIP_EXTENDED" -eq 0 ] && echo "yes (cond+context+time-lag+div)" || echo "SKIPPED")"
+echo "Token mode: ${TOKEN_MODE}tok"
 echo "Walltime: ${WALLTIME}"
 echo "=============================================="
 echo ""
@@ -250,12 +254,13 @@ for STOCK in $VALID_STOCKS; do
     # --------------------------------------------------------
     JOB_ID=$(sbatch --parsable \
         --nodes="${TOTAL_NODES}" \
+        ${EXCLUDE_NODES:+--exclude="${EXCLUDE_NODES}"} \
         --job-name="bench_${NAME}_${STOCK}" \
         --time="${WALLTIME}" \
         --output="${LOGS_DIR}/integrated_${NAME}_${STOCK}_%j.out" \
         --error="${LOGS_DIR}/integrated_${NAME}_${STOCK}_%j.err" \
         --partition="${PARTITION}" \
-        --export=ALL,REPO_DIR="${REPO_DIR}",PYTHON="${PYTHON}",STOCK="${STOCK}",DATA_DIR="${DATA_DIR}",CKPT_PATH="${CKPT_PATH}",CHECKPOINT_STEP="${CHECKPOINT_STEP}",RUN_NAME="${NAME}",BATCH_SIZE="${BATCH_SIZE}",N_COND_MSGS="${N_COND_MSGS}",N_GEN_MSGS="${N_GEN_MSGS}",N_SEQUENCES="${N_SEQUENCES}",SAMPLE_INDICES_FILE="${SAMPLE_INDICES_FILE}",SKIP_HF_COMPARE="${SKIP_HF_COMPARE}",SKIP_INFERENCE="${SKIP_INFERENCE}",SKIP_EXTENDED="${SKIP_EXTENDED}",INFER_OUTPUT_OVERRIDE="${INFER_OUTPUT_OVERRIDE}",NTFY_TOPIC_INFERENCE="${NTFY_TOPIC_INFERENCE}",NTFY_TOPIC_BENCHMARKS="${NTFY_TOPIC_BENCHMARKS}" \
+        --export=ALL,REPO_DIR="${REPO_DIR}",PYTHON="${PYTHON}",STOCK="${STOCK}",DATA_DIR="${DATA_DIR}",CKPT_PATH="${CKPT_PATH}",CHECKPOINT_STEP="${CHECKPOINT_STEP}",RUN_NAME="${NAME}",BATCH_SIZE="${BATCH_SIZE}",N_COND_MSGS="${N_COND_MSGS}",N_GEN_MSGS="${N_GEN_MSGS}",N_SEQUENCES="${N_SEQUENCES}",SAMPLE_INDICES_FILE="${SAMPLE_INDICES_FILE}",SKIP_HF_COMPARE="${SKIP_HF_COMPARE}",SKIP_INFERENCE="${SKIP_INFERENCE}",SKIP_EXTENDED="${SKIP_EXTENDED}",INFER_OUTPUT_OVERRIDE="${INFER_OUTPUT_OVERRIDE}",TOKEN_MODE="${TOKEN_MODE}",NTFY_TOPIC_INFERENCE="${NTFY_TOPIC_INFERENCE}",NTFY_TOPIC_BENCHMARKS="${NTFY_TOPIC_BENCHMARKS}" \
         "${SCRIPT_DIR}/_integrated.batch")
 
     echo "  Job: ${JOB_ID} (${TOTAL_NODES} nodes, ${WALLTIME})"
