@@ -147,7 +147,8 @@ fi
 
 # pip_packages (statsmodels, plotly, kaleido) needed for scoring/plotting phases.
 # Set AFTER inference to avoid pip_packages/numpy shadowing conda numpy.
-export PYTHONPATH="/lus/lfs1aip2/projects/s5e/lob_pipeline/pip_packages${PYTHONPATH:+:$PYTHONPATH}"
+# pip_packages_extra has numba/polars (installed separately due to pip_packages permissions).
+export PYTHONPATH="/lus/lfs1aip2/projects/s5e/lob_pipeline/pip_packages_extra:/lus/lfs1aip2/projects/s5e/lob_pipeline/pip_packages${PYTHONPATH:+:$PYTHONPATH}"
 
 # ============================================================
 # Phase 2: Validate + Stage + HF Matching
