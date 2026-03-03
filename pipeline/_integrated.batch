@@ -339,7 +339,7 @@ else
                 --metrics \"\$METRIC\" \
                 --shard_id \"\$SHARD_ID\" \
                 --run_id \"${RUN_ID}\" \
-                --n_workers 48 \
+                --n_workers 96 \
                 --progress_interval 120 && \
                 { echo \"[Proc \$PROC_ID] DONE: \$MODEL / \$METRIC\"; DONE=\$((DONE + 1)); } || \
                 { echo \"[Proc \$PROC_ID] FAILED: \$MODEL / \$METRIC\"; FAIL=\$((FAIL + 1)); }
@@ -461,7 +461,7 @@ else
                     --metrics \"\$METRIC\" \
                     --shard_id \"\$SHARD_ID\" \
                     --run_id \"${RUN_ID}\" \
-                    --n_workers 48 \
+                    --n_workers 96 \
                     --progress_interval 120 && \
                     { echo \"[Proc \$PROC_ID] DONE: \$FLAG / \$METRIC\"; DONE=\$((DONE + 1)); } || \
                     { echo \"[Proc \$PROC_ID] FAILED: \$FLAG / \$METRIC\"; FAIL=\$((FAIL + 1)); }
