@@ -14,6 +14,13 @@ encoding swap → inference (GPU) → staging → parallel scoring (CPU) → ext
 
 One SLURM job is submitted per stock. Each job runs all phases sequentially via `pipeline/_integrated.batch`. Supports 8 tickers: GOOG, AAPL, NVDA, AMZN, META, TSLA, MSFT, AMD.
 
+## Default Submission Settings
+
+- **Nodes: 1** (`--infer_nodes 1 --total_nodes 1`) — single node is sufficient for standard LOBbench runs
+- **No HF compare** (`--no_hf_compare`) — use random 1024 samples, not HF-matched 3136 (3x faster scoring)
+- **Extended: skip** (`--skip_extended`) unless explicitly requested
+- **Walltime: 2h** (`--walltime 02:00:00`)
+
 ## Code Structure
 
 | Directory | Purpose |
