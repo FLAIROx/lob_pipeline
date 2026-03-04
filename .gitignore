@@ -65,3 +65,7 @@ wandb/
 # Generated HF indices files
 pipeline/.hf_indices_*.txt
 core
+
+best_checkpoints/*
+pip_packages/*
+logs/*
