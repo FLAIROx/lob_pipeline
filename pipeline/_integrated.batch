@@ -97,6 +97,11 @@ else
         CMD="$CMD --sample_indices_file \"$SAMPLE_INDICES_FILE\""
     fi
 
+    # Wide book init (e.g. L100) for deeper simulator initialization
+    if [ -n "${WIDE_BOOK_DIR:-}" ]; then
+        CMD="$CMD --wide_book_dir \"$WIDE_BOOK_DIR\" --wide_levels ${WIDE_LEVELS:-10}"
+    fi
+
     echo "  Command: ${CMD}"
     mkdir -p "${INFER_OUTPUT}"
 
