@@ -19,21 +19,21 @@ REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 # ============================================================
 NAME=""
 CHECKPOINT_STEP=""
-STOCKS="GOOG INTC"
+STOCKS="GOOG"
 BATCH_SIZE=64
 N_COND_MSGS=500
 N_GEN_MSGS=500
 NO_HF_COMPARE=1
 N_SEQUENCES=1024
-INFER_NODES=4
-WALLTIME="24:00:00"
+INFER_NODES=1
+WALLTIME="02:00:00"
 TOTAL_NODES=""
 SKIP_INFERENCE=0
-SKIP_EXTENDED=0
+SKIP_EXTENDED=1
 INFERENCE_DIR=""
 TOKEN_MODE=24
-WIDE_BOOK_DIR=""
-WIDE_LEVELS=10
+WIDE_BOOK_DIR="/lus/lfs1aip2/projects/s5e/lob_preproc_l100/GOOG"
+WIDE_LEVELS=100
 LOBS5_DIR=""
 INFER_PYTHON=""
 
@@ -49,22 +49,24 @@ if [ $# -lt 1 ]; then
     echo "Options:"
     echo "  --name NAME                Run name (default: derived from checkpoint dirname)"
     echo "  --checkpoint_step N        Step to load (default: auto-detect latest)"
-    echo "  --stocks \"GOOG INTC\"       Stocks to evaluate (default: \"GOOG INTC\")"
+    echo "  --stocks \"GOOG\"             Stocks to evaluate (default: \"GOOG\")"
     echo "  --batch_size N             Inference batch size (default: 64)"
     echo "  --n_cond_msgs N            Conditioning messages (default: 500)"
     echo "  --n_gen_msgs N             Generated messages (default: 500)"
-    echo "  --no_hf_compare            Custom mode: random sampling, no HF comparison"
-    echo "  --n_sequences N            Custom mode only: number of sequences (default: 1024)"
-    echo "  --infer_nodes N            Inference nodes (default: 4, each has 4 GPUs)"
-    echo "  --walltime T               Total walltime for the integrated job (default: 24:00:00)"
-    echo "  --total_nodes N            Total nodes to allocate (default: max(infer_nodes, 20))"
+    echo "  --hf_compare               Enable HF comparison mode (default: off)"
+    echo "  --no_hf_compare            Disable HF comparison (default, random sampling)"
+    echo "  --n_sequences N            Number of sequences (default: 1024)"
+    echo "  --infer_nodes N            Inference nodes (default: 1, clamped to total_nodes)"
+    echo "  --walltime T               Total walltime (default: 02:00:00)"
+    echo "  --total_nodes N            Total nodes (default: max(infer_nodes, 20))"
     echo "  --skip_inference           Reuse existing inference (needs --inference_dir)"
     echo "  --inference_dir DIR        Path to existing inference results"
-    echo "  --skip_extended            Skip extended scoring (contextual, time-lagged, divergence)"
+    echo "  --extended                 Enable extended scoring (cond, contextual, time-lagged, div)"
+    echo "  --skip_extended            Skip extended scoring (default)"
     echo "  --token_mode N             Token encoding mode: 22 or 24 (default: 24)"
-    echo "  --wide_book_dir DIR        Path to wider L2 book .npy files for simulator init (e.g. L100)"
-    echo "  --wide_levels N            Number of book levels in wide_book_dir (default: 10 = no change)"
-    echo "  --lobs5_dir DIR            Override LOBS5 code dir for inference (default: REPO_DIR/LOBS5)"
+    echo "  --wide_book_dir DIR        L100 book .npy dir (default: lob_preproc_l100/GOOG)"
+    echo "  --wide_levels N            Book levels in wide_book_dir (default: 100)"
+    echo "  --lobs5_dir DIR            Override LOBS5 code dir for inference"
     echo "  --infer_python PATH        Python interpreter for inference (default: same as scoring)"
     exit 1
 fi
@@ -81,12 +83,14 @@ while [ $# -gt 0 ]; do
         --n_cond_msgs)      N_COND_MSGS="$2";      shift 2 ;;
         --n_gen_msgs)       N_GEN_MSGS="$2";       shift 2 ;;
         --no_hf_compare)    NO_HF_COMPARE=1;       shift 1 ;;
+        --hf_compare)       NO_HF_COMPARE=0;       shift 1 ;;
         --n_sequences)      N_SEQUENCES="$2";      shift 2 ;;
         --infer_nodes)      INFER_NODES="$2";      shift 2 ;;
         --walltime)         WALLTIME="$2";         shift 2 ;;
         --total_nodes)      TOTAL_NODES="$2";      shift 2 ;;
         --skip_inference)   SKIP_INFERENCE=1;       shift 1 ;;
         --skip_extended)    SKIP_EXTENDED=1;        shift 1 ;;
+        --extended)         SKIP_EXTENDED=0;        shift 1 ;;
         --inference_dir)    INFERENCE_DIR="$2";    shift 2 ;;
         --token_mode)       TOKEN_MODE="$2";       shift 2 ;;
         --wide_book_dir)    WIDE_BOOK_DIR="$2";    shift 2 ;;
@@ -109,6 +113,12 @@ if [ -z "$TOTAL_NODES" ]; then
     else
         TOTAL_NODES=$((INFER_NODES > 20 ? INFER_NODES : 20))
     fi
+fi
+
+# Clamp infer_nodes to total_nodes (can't use more infer nodes than allocated)
+if [ "$INFER_NODES" -gt "$TOTAL_NODES" ]; then
+    echo "[*] Clamping infer_nodes from ${INFER_NODES} to ${TOTAL_NODES} (total_nodes)"
+    INFER_NODES=$TOTAL_NODES
 fi
 
 # ============================================================
