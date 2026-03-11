@@ -331,13 +331,49 @@ done
 N_TASKS=$(wc -l < "$TASK_FILE")
 if [ "$N_TASKS" -eq 0 ]; then
     echo "  No scoring tasks to run"
+elif [ "$SLURM_JOB_NUM_NODES" -eq 1 ]; then
+    # ── Single-node fast path ──
+    # Run all metrics in one run_bench.py call per model; the internal
+    # ThreadPoolExecutor parallelises across BENCH_METRIC_WORKERS threads.
+    # GH200 has 72 cores per CPU — use 48 threads (leave headroom for OS/IO).
+    export BENCH_METRIC_WORKERS=${BENCH_METRIC_WORKERS:-48}
+    export XLA_PYTHON_CLIENT_PREALLOCATE=false
+    export CUDA_VISIBLE_DEVICES=0
+
+    echo "  Single-node mode: all ${N_UNCOND} metrics per call (${BENCH_METRIC_WORKERS} threads)"
+
+    SCORE_EXIT=0
+    for MODEL in $MODELS_TO_SCORE; do
+        CHECK="${BENCH_DATA}/${MODEL}/${STOCK}/2023/data_real"
+        n_check=$(ls "${CHECK}"/*message*.csv 2>/dev/null | wc -l)
+        if [ "$n_check" -eq 0 ]; then
+            echo "  Skipping ${MODEL}: no real data staged"
+            continue
+        fi
+
+        echo "  Scoring ${MODEL} (all unconditional metrics)..."
+        ${PYTHON} -u run_bench.py \
+            --data_dir "${BENCH_DATA}" \
+            --model_name "${MODEL}" \
+            --stock "${STOCK}" \
+            --time_period 2023 \
+            --save_dir "${RESULTS_DIR}" \
+            --uncond_only \
+            --run_id "${RUN_ID}" \
+            --n_workers 96 \
+            --progress_interval 120 && \
+            echo "  DONE: ${MODEL} (all unconditional metrics)" || \
+            { echo "  FAILED: ${MODEL}"; SCORE_EXIT=1; }
+    done
+
+    echo "  Single-node scoring exit code: ${SCORE_EXIT}"
 else
+    # ── Multi-node path: round-robin shards across nodes ──
     N_SCORING_NODES=$((SLURM_JOB_NUM_NODES < N_TASKS ? SLURM_JOB_NUM_NODES : N_TASKS))
 
     echo "  Tasks: ${N_TASKS} ($(echo $MODELS_TO_SCORE | wc -w) model(s) x ${N_UNCOND} metrics)"
     echo "  Scoring nodes: ${N_SCORING_NODES} (round-robin)"
 
-    # Phase 3 srun: one task per scoring node, each handles its share via round-robin
     srun --nodes=${N_SCORING_NODES} --ntasks=${N_SCORING_NODES} --ntasks-per-node=1 \
         bash -c "
         export XLA_PYTHON_CLIENT_PREALLOCATE=false
@@ -349,7 +385,6 @@ else
         mapfile -t TASKS < \"${TASK_FILE}\"
         N_TASKS=\${#TASKS[@]}
 
-        # Round-robin: this proc handles tasks PROC_ID, PROC_ID+N_PROCS, ...
         TASK_IDX=\$PROC_ID
         DONE=0
         FAIL=0
@@ -379,7 +414,6 @@ else
             TASK_IDX=\$((TASK_IDX + N_PROCS))
         done
         echo \"[Proc \$PROC_ID] Finished: \$DONE ok, \$FAIL failed\"
-        # Exit non-zero only if ALL tasks failed (partial failure is acceptable)
         [ \$DONE -gt 0 ] && exit 0 || exit 1
     " && SCORE_EXIT=0 || SCORE_EXIT=$?
 
@@ -458,7 +492,36 @@ else
     N_EXT_TASKS=$(wc -l < "$EXT_TASK_FILE")
     if [ "$N_EXT_TASKS" -eq 0 ]; then
         echo "  No extended tasks to run"
+    elif [ "$SLURM_JOB_NUM_NODES" -eq 1 ]; then
+        # ── Single-node fast path for extended scoring ──
+        export BENCH_METRIC_WORKERS=${BENCH_METRIC_WORKERS:-48}
+        echo "  Single-node extended: 4 calls per model (${BENCH_METRIC_WORKERS} threads each)"
+
+        EXT_EXIT=0
+        for MODEL in $MODELS_TO_SCORE; do
+            CHECK="${BENCH_DATA}/${MODEL}/${STOCK}/2023/data_real"
+            n_check=$(ls "${CHECK}"/*message*.csv 2>/dev/null | wc -l)
+            [ "$n_check" -eq 0 ] && continue
+
+            for FLAG in --cond_only --time_lagged_only --context_only --div_only; do
+                echo "  Scoring ${MODEL} ${FLAG}..."
+                ${PYTHON} -u run_bench.py \
+                    --data_dir "${BENCH_DATA}" \
+                    --model_name "${MODEL}" \
+                    --stock "${STOCK}" \
+                    --time_period 2023 \
+                    --save_dir "${RESULTS_DIR}" \
+                    ${FLAG} \
+                    --run_id "${RUN_ID}" \
+                    --n_workers 96 \
+                    --progress_interval 120 && \
+                    echo "  DONE: ${MODEL} ${FLAG}" || \
+                    { echo "  FAILED: ${MODEL} ${FLAG}"; EXT_EXIT=1; }
+            done
+        done
+        echo "  Single-node extended exit: ${EXT_EXIT}"
     else
+        # ── Multi-node path: round-robin extended shards ──
         N_EXT_NODES=$((SLURM_JOB_NUM_NODES < N_EXT_TASKS ? SLURM_JOB_NUM_NODES : N_EXT_TASKS))
         echo "  Extended tasks: ${N_EXT_TASKS} across ${N_EXT_NODES} nodes ($(echo $MODELS_TO_SCORE | wc -w) model(s))"
 
@@ -505,7 +568,7 @@ else
         " && EXT_EXIT=0 || EXT_EXIT=$?
         echo "  Extended scoring exit: ${EXT_EXIT}"
 
-        # Step 4c: Merge extended shards per model per type
+        # Merge extended shards (multi-node only — single-node produces unshareded files)
         echo "  Merging extended shards..."
         for MODEL in $MODELS_TO_SCORE; do
             n=$(ls "${RESULTS_DIR}/scores/scores_cond_${STOCK}_${MODEL}_shard"*"_${RUN_ID}.pkl" 2>/dev/null | wc -l)
