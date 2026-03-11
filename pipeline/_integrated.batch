@@ -169,7 +169,7 @@ else
 
     echo "  Inference SUCCESS"
     for d in data_real data_gen data_cond; do
-        echo "    ${d}/: $(ls "${INFER_OUTPUT}/${d}/"*message*.csv 2>/dev/null | wc -l) files"
+        echo "    ${d}/: $(ls "${INFER_OUTPUT}/${d}/"*message*.csv 2>/dev/null | wc -l || true) files"
     done
 
     if [ -n "${NTFY_TOPIC_INFERENCE:-}" ] && command -v ~/bin/slurm-notify &> /dev/null; then
@@ -196,8 +196,8 @@ if [ ! -d "${INFER_OUTPUT}/data_gen" ]; then
     exit 1
 fi
 
-n_gen=$(ls "${INFER_OUTPUT}/data_gen/"*message*.csv 2>/dev/null | wc -l)
-n_real=$(ls "${INFER_OUTPUT}/data_real/"*message*.csv 2>/dev/null | wc -l)
+n_gen=$(ls "${INFER_OUTPUT}/data_gen/"*message*.csv 2>/dev/null | wc -l || true)
+n_real=$(ls "${INFER_OUTPUT}/data_real/"*message*.csv 2>/dev/null | wc -l || true)
 echo "  Generated: ${n_gen} message files"
 echo "  Real:      ${n_real} message files"
 
@@ -318,7 +318,7 @@ RUN_ID="integrated_${SLURM_JOB_ID}"
 > "$TASK_FILE"
 for MODEL in $MODELS_TO_SCORE; do
     CHECK="${BENCH_DATA}/${MODEL}/${STOCK}/2023/data_real"
-    n_check=$(ls "${CHECK}"/*message*.csv 2>/dev/null | wc -l)
+    n_check=$(ls "${CHECK}"/*message*.csv 2>/dev/null | wc -l || true)
     if [ "$n_check" -eq 0 ]; then
         echo "  Skipping ${MODEL}: no real data staged"
         continue
@@ -345,7 +345,7 @@ elif [ "$SLURM_JOB_NUM_NODES" -eq 1 ]; then
     SCORE_EXIT=0
     for MODEL in $MODELS_TO_SCORE; do
         CHECK="${BENCH_DATA}/${MODEL}/${STOCK}/2023/data_real"
-        n_check=$(ls "${CHECK}"/*message*.csv 2>/dev/null | wc -l)
+        n_check=$(ls "${CHECK}"/*message*.csv 2>/dev/null | wc -l || true)
         if [ "$n_check" -eq 0 ]; then
             echo "  Skipping ${MODEL}: no real data staged"
             continue
@@ -450,7 +450,7 @@ ALL_DIV_METRICS=(
 # Step 4a: Merge unconditional shards from Phase 3
 echo "  Merging unconditional shards..."
 for MODEL in $MODELS_TO_SCORE; do
-    n_shards=$(ls "${RESULTS_DIR}/scores/scores_uncond_${STOCK}_${MODEL}"*"_shard"*"_${RUN_ID}.pkl" 2>/dev/null | wc -l)
+    n_shards=$(ls "${RESULTS_DIR}/scores/scores_uncond_${STOCK}_${MODEL}"*"_shard"*"_${RUN_ID}.pkl" 2>/dev/null | wc -l || true)
     if [ "$n_shards" -eq 0 ]; then
         echo "  Skipping ${MODEL}: no uncond shards found"
         continue
@@ -470,7 +470,7 @@ else
     > "$EXT_TASK_FILE"
     for MODEL in $MODELS_TO_SCORE; do
         CHECK="${BENCH_DATA}/${MODEL}/${STOCK}/2023/data_real"
-        n_check=$(ls "${CHECK}"/*message*.csv 2>/dev/null | wc -l)
+        n_check=$(ls "${CHECK}"/*message*.csv 2>/dev/null | wc -l || true)
         if [ "$n_check" -eq 0 ]; then
             echo "  Skipping ${MODEL}: no real data"
             continue
@@ -500,7 +500,7 @@ else
         EXT_EXIT=0
         for MODEL in $MODELS_TO_SCORE; do
             CHECK="${BENCH_DATA}/${MODEL}/${STOCK}/2023/data_real"
-            n_check=$(ls "${CHECK}"/*message*.csv 2>/dev/null | wc -l)
+            n_check=$(ls "${CHECK}"/*message*.csv 2>/dev/null | wc -l || true)
             [ "$n_check" -eq 0 ] && continue
 
             for FLAG in --cond_only --time_lagged_only --context_only --div_only; do
@@ -571,25 +571,25 @@ else
         # Merge extended shards (multi-node only — single-node produces unshareded files)
         echo "  Merging extended shards..."
         for MODEL in $MODELS_TO_SCORE; do
-            n=$(ls "${RESULTS_DIR}/scores/scores_cond_${STOCK}_${MODEL}_shard"*"_${RUN_ID}.pkl" 2>/dev/null | wc -l)
+            n=$(ls "${RESULTS_DIR}/scores/scores_cond_${STOCK}_${MODEL}_shard"*"_${RUN_ID}.pkl" 2>/dev/null | wc -l || true)
             [ "$n" -gt 0 ] && $PYTHON -u merge_shards.py \
                 "${RESULTS_DIR}/scores/scores_cond_${STOCK}_${MODEL}_shard*_${RUN_ID}.pkl" \
                 --output "${RESULTS_DIR}/scores/scores_cond_${STOCK}_${MODEL}_${RUN_ID}.pkl" \
                 2>&1 || echo "  WARNING: cond merge failed for ${MODEL}"
 
-            n=$(ls "${RESULTS_DIR}/scores/scores_time_lagged_${STOCK}_${MODEL}_shard"*"_${RUN_ID}.pkl" 2>/dev/null | wc -l)
+            n=$(ls "${RESULTS_DIR}/scores/scores_time_lagged_${STOCK}_${MODEL}_shard"*"_${RUN_ID}.pkl" 2>/dev/null | wc -l || true)
             [ "$n" -gt 0 ] && $PYTHON -u merge_shards.py \
                 "${RESULTS_DIR}/scores/scores_time_lagged_${STOCK}_${MODEL}_shard*_${RUN_ID}.pkl" \
                 --output "${RESULTS_DIR}/scores/scores_time_lagged_${STOCK}_${MODEL}_${RUN_ID}.pkl" \
                 2>&1 || echo "  WARNING: time_lagged merge failed for ${MODEL}"
 
-            n=$(ls "${RESULTS_DIR}/scores/scores_context_${STOCK}_${MODEL}_shard"*"_${RUN_ID}.pkl" 2>/dev/null | wc -l)
+            n=$(ls "${RESULTS_DIR}/scores/scores_context_${STOCK}_${MODEL}_shard"*"_${RUN_ID}.pkl" 2>/dev/null | wc -l || true)
             [ "$n" -gt 0 ] && $PYTHON -u merge_shards.py \
                 "${RESULTS_DIR}/scores/scores_context_${STOCK}_${MODEL}_shard*_${RUN_ID}.pkl" \
                 --output "${RESULTS_DIR}/scores/scores_context_${STOCK}_${MODEL}_${RUN_ID}.pkl" \
                 2>&1 || echo "  WARNING: context merge failed for ${MODEL}"
 
-            n=$(ls "${RESULTS_DIR}/scores/scores_div_${STOCK}_${MODEL}_shard"*"_${DIV_HORIZON}_${RUN_ID}.pkl" 2>/dev/null | wc -l)
+            n=$(ls "${RESULTS_DIR}/scores/scores_div_${STOCK}_${MODEL}_shard"*"_${DIV_HORIZON}_${RUN_ID}.pkl" 2>/dev/null | wc -l || true)
             [ "$n" -gt 0 ] && $PYTHON -u merge_shards.py \
                 "${RESULTS_DIR}/scores/scores_div_${STOCK}_${MODEL}_shard*_${DIV_HORIZON}_${RUN_ID}.pkl" \
                 --output "${RESULTS_DIR}/scores/scores_div_${STOCK}_${MODEL}_${DIV_HORIZON}_${RUN_ID}.pkl" \
@@ -616,7 +616,7 @@ for f in "${RESULTS_DIR}/scores/"scores_*"_${STOCK}_"*"_integrated_"*".pkl"; do
     [[ "$fname" == *"hf_"* ]] && continue
     ln -sf "$f" "${CLEAN_SCORES}/${fname}"
 done
-echo "  Clean scores: $(ls "${CLEAN_SCORES}" | wc -l) files staged"
+echo "  Clean scores: $(ls "${CLEAN_SCORES}" 2>/dev/null | wc -l || true) files staged"
 
 mkdir -p "${RESULTS_DIR}/plots"
 $PYTHON -u run_plotting.py \
