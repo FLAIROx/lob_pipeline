@@ -34,6 +34,8 @@ INFERENCE_DIR=""
 TOKEN_MODE=24
 WIDE_BOOK_DIR=""
 WIDE_LEVELS=10
+LOBS5_DIR=""
+INFER_PYTHON=""
 
 # ============================================================
 # Parse arguments
@@ -62,6 +64,8 @@ if [ $# -lt 1 ]; then
     echo "  --token_mode N             Token encoding mode: 22 or 24 (default: 24)"
     echo "  --wide_book_dir DIR        Path to wider L2 book .npy files for simulator init (e.g. L100)"
     echo "  --wide_levels N            Number of book levels in wide_book_dir (default: 10 = no change)"
+    echo "  --lobs5_dir DIR            Override LOBS5 code dir for inference (default: REPO_DIR/LOBS5)"
+    echo "  --infer_python PATH        Python interpreter for inference (default: same as scoring)"
     exit 1
 fi
 
@@ -87,6 +91,8 @@ while [ $# -gt 0 ]; do
         --token_mode)       TOKEN_MODE="$2";       shift 2 ;;
         --wide_book_dir)    WIDE_BOOK_DIR="$2";    shift 2 ;;
         --wide_levels)      WIDE_LEVELS="$2";      shift 2 ;;
+        --lobs5_dir)        LOBS5_DIR="$2";        shift 2 ;;
+        --infer_python)     INFER_PYTHON="$2";     shift 2 ;;
         --infer_walltime|--bench_walltime)
             echo "WARNING: $1 is deprecated. Use --walltime instead (single integrated job)."
             shift 2 ;;
@@ -226,6 +232,7 @@ echo "Nodes: ${TOTAL_NODES} total (${INFER_NODES} for inference, up to ${TOTAL_N
 echo "Extended: $([ "$SKIP_EXTENDED" -eq 0 ] && echo "yes (cond+context+time-lag+div)" || echo "SKIPPED")"
 echo "Token mode: ${TOKEN_MODE}tok"
 echo "Wide book: $([ -n "$WIDE_BOOK_DIR" ] && echo "${WIDE_BOOK_DIR} (${WIDE_LEVELS} levels)" || echo "disabled (L10 default)")"
+echo "LOBS5 dir: $([ -n "$LOBS5_DIR" ] && echo "$LOBS5_DIR" || echo "${REPO_DIR}/LOBS5 (default)")"
 echo "Walltime: ${WALLTIME}"
 echo "=============================================="
 echo ""
@@ -267,7 +274,7 @@ for STOCK in $VALID_STOCKS; do
         --output="${LOGS_DIR}/integrated_${NAME}_${STOCK}_%j.out" \
         --error="${LOGS_DIR}/integrated_${NAME}_${STOCK}_%j.err" \
         --partition="${PARTITION}" \
-        --export=ALL,REPO_DIR="${REPO_DIR}",PYTHON="${PYTHON}",STOCK="${STOCK}",DATA_DIR="${DATA_DIR}",CKPT_PATH="${CKPT_PATH}",CHECKPOINT_STEP="${CHECKPOINT_STEP}",RUN_NAME="${NAME}",BATCH_SIZE="${BATCH_SIZE}",N_COND_MSGS="${N_COND_MSGS}",N_GEN_MSGS="${N_GEN_MSGS}",N_SEQUENCES="${N_SEQUENCES}",SAMPLE_INDICES_FILE="${SAMPLE_INDICES_FILE}",SKIP_HF_COMPARE="${SKIP_HF_COMPARE}",SKIP_INFERENCE="${SKIP_INFERENCE}",SKIP_EXTENDED="${SKIP_EXTENDED}",INFER_OUTPUT_OVERRIDE="${INFER_OUTPUT_OVERRIDE}",TOKEN_MODE="${TOKEN_MODE}",WIDE_BOOK_DIR="${WIDE_BOOK_DIR}",WIDE_LEVELS="${WIDE_LEVELS}",NTFY_TOPIC_INFERENCE="${NTFY_TOPIC_INFERENCE}",NTFY_TOPIC_BENCHMARKS="${NTFY_TOPIC_BENCHMARKS}" \
+        --export=ALL,REPO_DIR="${REPO_DIR}",PYTHON="${PYTHON}",INFER_PYTHON="${INFER_PYTHON}",STOCK="${STOCK}",DATA_DIR="${DATA_DIR}",CKPT_PATH="${CKPT_PATH}",CHECKPOINT_STEP="${CHECKPOINT_STEP}",RUN_NAME="${NAME}",BATCH_SIZE="${BATCH_SIZE}",N_COND_MSGS="${N_COND_MSGS}",N_GEN_MSGS="${N_GEN_MSGS}",N_SEQUENCES="${N_SEQUENCES}",SAMPLE_INDICES_FILE="${SAMPLE_INDICES_FILE}",SKIP_HF_COMPARE="${SKIP_HF_COMPARE}",SKIP_INFERENCE="${SKIP_INFERENCE}",SKIP_EXTENDED="${SKIP_EXTENDED}",INFER_OUTPUT_OVERRIDE="${INFER_OUTPUT_OVERRIDE}",TOKEN_MODE="${TOKEN_MODE}",WIDE_BOOK_DIR="${WIDE_BOOK_DIR}",WIDE_LEVELS="${WIDE_LEVELS}",LOBS5_DIR="${LOBS5_DIR}",NTFY_TOPIC_INFERENCE="${NTFY_TOPIC_INFERENCE}",NTFY_TOPIC_BENCHMARKS="${NTFY_TOPIC_BENCHMARKS}" \
         "${SCRIPT_DIR}/_integrated.batch")
 
     echo "  Job: ${JOB_ID} (${TOTAL_NODES} nodes, ${WALLTIME})"

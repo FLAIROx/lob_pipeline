@@ -24,12 +24,20 @@ export PYTHONNOUSERSITE=1  # prevent ~/.local packages from shadowing conda env
 # NOTE: PYTHONPATH for pip_packages is set AFTER inference (Phase 1) to avoid
 # pip_packages/numpy shadowing the conda numpy during inference.
 
+# LOBS5 code directory (default: REPO_DIR/LOBS5, override with --lobs5_dir for non-standard models)
+LOBS5_DIR="${LOBS5_DIR:-${REPO_DIR}/LOBS5}"
+# Inference Python (default: same as scoring PYTHON; override for envs with triton/custom deps)
+INFER_PYTHON="${INFER_PYTHON:-${PYTHON}}"
+
 # Select encoding based on TOKEN_MODE (22tok or 24tok)
 TOKEN_MODE="${TOKEN_MODE:-24}"
-ENCODING_SRC="${REPO_DIR}/LOBS5/lob/encoding_${TOKEN_MODE}tok.py"
-ENCODING_DST="${REPO_DIR}/LOBS5/lob/encoding.py"
+ENCODING_SRC="${LOBS5_DIR}/lob/encoding_${TOKEN_MODE}tok.py"
+ENCODING_DST="${LOBS5_DIR}/lob/encoding.py"
 if [ -f "$ENCODING_SRC" ]; then
-    cp "$ENCODING_SRC" "$ENCODING_DST"
+    # Only cp if src != dst (avoids Permission denied when encoding.py is owned by another user)
+    if ! cmp -s "$ENCODING_SRC" "$ENCODING_DST"; then
+        cp "$ENCODING_SRC" "$ENCODING_DST"
+    fi
     echo "Token mode: ${TOKEN_MODE}tok ($(wc -l < "$ENCODING_SRC") lines)"
 else
     echo "WARNING: ${ENCODING_SRC} not found, using existing encoding.py"
@@ -51,6 +59,7 @@ echo "Stock:       ${STOCK}"
 echo "Checkpoint:  ${CKPT_PATH} (step ${CHECKPOINT_STEP})"
 echo "Data:        ${DATA_DIR}"
 echo "Nodes:       ${SLURM_JOB_NUM_NODES}"
+echo "LOBS5 dir:   ${LOBS5_DIR}"
 echo "Run name:    ${RUN_NAME}"
 echo "HF compare:  $([ "${SKIP_HF_COMPARE}" -eq 0 ] && echo "yes" || echo "no")"
 echo "Skip infer:  ${SKIP_INFERENCE:-0}"
@@ -78,9 +87,27 @@ else
     export XLA_PYTHON_CLIENT_PREALLOCATE=true
     export XLA_PYTHON_CLIENT_MEM_FRACTION=0.90
 
+    # Ensure gymnax_exchange is importable
+    for _cand in "${LOBS5_DIR}/AlphaTrade" "${REPO_DIR}/LOBS5/AlphaTrade"; do
+        if [ -d "$_cand/gymnax_exchange" ]; then
+            export PYTHONPATH="${_cand}${PYTHONPATH:+:$PYTHONPATH}"
+            echo "  gymnax_exchange: ${_cand}"
+            break
+        fi
+    done
+
+    # Custom LOBS5_DIR: pass --model_code_dir so run_inference.py injects it
+    # at sys.path[0] before any model imports (s5/, lob/, preproc).
+    MODEL_CODE_ARG=""
+    if [ "${LOBS5_DIR}" != "${REPO_DIR}/LOBS5" ]; then
+        MODEL_CODE_ARG="--model_code_dir ${LOBS5_DIR}"
+        echo "  Model code: ${LOBS5_DIR} (via --model_code_dir)"
+    fi
+
     cd "${REPO_DIR}/LOBS5"
 
-    CMD="$PYTHON -u run_inference.py \
+    CMD="$INFER_PYTHON -u run_inference.py \
+        $MODEL_CODE_ARG \
         --stock $STOCK \
         --ckpt_path \"$CKPT_PATH\" \
         --data_dir \"$DATA_DIR\" \
