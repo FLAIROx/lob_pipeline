@@ -21,7 +21,7 @@ export PYTHONNOUSERSITE=1
 
 REPO_DIR="/lus/lfs1aip2/projects/s5e/lob_pipeline"
 PYTHON="/lus/lfs1aip2/projects/s5e/quant/miniforge3/envs/lobs5/bin/python"
-CKPT_PATH="/lus/lfs1aip2/projects/s5e/quant/AlphaTrade/experiments/exp_H4-self-attention/checkpoints/j2505280_uc4odetc_2505280"
+CKPT_PATH="/lus/lfs1aip2/projects/s5e/quant/AlphaTrade/experiments/exp_H4-self-attention/checkpoints/j2496072_ti7ek5z5_2496072"
 DATA_DIR="/lus/lfs1aip2/projects/s5e/lob_pipeline/data/GOOG_jan2026"
 SAVE_DIR="${REPO_DIR}/LOBS5/inference_results/test_xfmr_${SLURM_JOB_ID}"
 
@@ -62,11 +62,11 @@ $PYTHON -u run_inference.py \
     --ckpt_path "$CKPT_PATH" \
     --data_dir "$DATA_DIR" \
     --save_dir "$SAVE_DIR" \
-    --n_cond_msgs 500 \
+    --n_cond_msgs 250 \
     --n_gen_msgs 100 \
     --n_sequences 4 \
     --batch_size 4 \
-    --checkpoint_step 7001 \
+    --checkpoint_step 28495 \
     --rank 0 \
     --world_size 1 \
     2>&1 | tee "${SAVE_DIR}/log.txt"
