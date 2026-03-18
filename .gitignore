@@ -79,6 +79,7 @@ logs/*
 *.png
 
 # Claude Code artifacts
+CLAUDE.md
 .claude/
 .worktrees/
 
