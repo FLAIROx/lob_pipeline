@@ -32,7 +32,8 @@ SKIP_INFERENCE=0
 SKIP_EXTENDED=1
 INFERENCE_DIR=""
 TOKEN_MODE=24
-WIDE_BOOK_DIR="/lus/lfs1aip2/projects/s5e/lob_preproc_l100/GOOG"
+WIDE_BOOK_BASE="/lus/lfs1aip2/projects/s5e/lob_preproc_l100"
+WIDE_BOOK_DIR=""
 WIDE_LEVELS=100
 LOBS5_DIR=""
 INFER_PYTHON=""
@@ -64,7 +65,8 @@ if [ $# -lt 1 ]; then
     echo "  --extended                 Enable extended scoring (cond, contextual, time-lagged, div)"
     echo "  --skip_extended            Skip extended scoring (default)"
     echo "  --token_mode N             Token encoding mode: 1, 22, or 24 (default: 24)"
-    echo "  --wide_book_dir DIR        L100 book .npy dir (default: lob_preproc_l100/GOOG)"
+    echo "  --wide_book_base DIR       L100 book base dir (default: lob_preproc_l100/, per-ticker)"
+    echo "  --wide_book_dir DIR        Override L100 dir for all stocks (bypasses per-ticker)"
     echo "  --wide_levels N            Book levels in wide_book_dir (default: 100)"
     echo "  --lobs5_dir DIR            Override LOBS5 code dir for inference"
     echo "  --infer_python PATH        Python interpreter for inference (default: same as scoring)"
@@ -93,6 +95,7 @@ while [ $# -gt 0 ]; do
         --extended)         SKIP_EXTENDED=0;        shift 1 ;;
         --inference_dir)    INFERENCE_DIR="$2";    shift 2 ;;
         --token_mode)       TOKEN_MODE="$2";       shift 2 ;;
+        --wide_book_base)   WIDE_BOOK_BASE="$2";   shift 2 ;;
         --wide_book_dir)    WIDE_BOOK_DIR="$2";    shift 2 ;;
         --wide_levels)      WIDE_LEVELS="$2";      shift 2 ;;
         --lobs5_dir)        LOBS5_DIR="$2";        shift 2 ;;
@@ -241,7 +244,7 @@ echo "Config: ${N_COND_MSGS} cond + ${N_GEN_MSGS} gen, batch ${BATCH_SIZE}"
 echo "Nodes: ${TOTAL_NODES} total (${INFER_NODES} for inference, up to ${TOTAL_NODES} for scoring)"
 echo "Extended: $([ "$SKIP_EXTENDED" -eq 0 ] && echo "yes (cond+context+time-lag+div)" || echo "SKIPPED")"
 echo "Token mode: ${TOKEN_MODE}tok"
-echo "Wide book: $([ -n "$WIDE_BOOK_DIR" ] && echo "${WIDE_BOOK_DIR} (${WIDE_LEVELS} levels)" || echo "disabled (L10 default)")"
+echo "Wide book: $([ -n "$WIDE_BOOK_DIR" ] && echo "${WIDE_BOOK_DIR} (${WIDE_LEVELS} levels, all stocks)" || echo "${WIDE_BOOK_BASE}/{STOCK} (${WIDE_LEVELS} levels, per-ticker)")"
 echo "LOBS5 dir: $([ -n "$LOBS5_DIR" ] && echo "$LOBS5_DIR" || echo "quant/AlphaTrade/LOBS5 (default)")"
 echo "Walltime: ${WALLTIME}"
 echo "=============================================="
@@ -255,15 +258,41 @@ for STOCK in $VALID_STOCKS; do
 
     echo "--- ${STOCK} ---"
 
-    # HF mode: extract indices
+    # Resolve per-ticker L100 wide book path
+    if [ -n "$WIDE_BOOK_DIR" ]; then
+        # Explicit override — use same dir for all stocks
+        STOCK_WIDE_BOOK_DIR="$WIDE_BOOK_DIR"
+    elif [ -n "$WIDE_BOOK_BASE" ]; then
+        STOCK_WIDE_BOOK_DIR="${WIDE_BOOK_BASE}/${STOCK}"
+        if [ ! -d "$STOCK_WIDE_BOOK_DIR" ]; then
+            echo "  ERROR: No L100 data for ${STOCK} at ${STOCK_WIDE_BOOK_DIR}"
+            echo "  Run: /lus/lfs1aip2/projects/s5e/scripts/prepare_l100_ticker.sh ${STOCK}"
+            continue
+        fi
+    else
+        STOCK_WIDE_BOOK_DIR=""
+    fi
+
+    # Sample indices: use pre-generated fixed indices for reproducible evaluation
     SAMPLE_INDICES_FILE=""
     SKIP_HF_COMPARE="$NO_HF_COMPARE"
     if [ "$NO_HF_COMPARE" -eq 0 ]; then
+        # Legacy HF-matched mode (GOOG/INTC Jan 2023 only)
         if extract_hf_indices "$STOCK"; then
             SAMPLE_INDICES_FILE="${SCRIPT_DIR}/.hf_indices_${STOCK}.txt"
         else
             echo "  Falling back to custom mode for ${STOCK} (no HF data)"
             SKIP_HF_COMPARE=1
+        fi
+    fi
+
+    # Use pre-generated fixed indices if available (ensures all models
+    # are evaluated on identical sequences for fair comparison)
+    if [ -z "$SAMPLE_INDICES_FILE" ]; then
+        FIXED_INDICES="${SCRIPT_DIR}/sample_indices/${STOCK}_${N_SEQUENCES}.txt"
+        if [ -f "$FIXED_INDICES" ]; then
+            SAMPLE_INDICES_FILE="$FIXED_INDICES"
+            echo "  Using fixed indices: ${FIXED_INDICES} (${N_SEQUENCES} samples)"
         fi
     fi
 
@@ -284,7 +313,7 @@ for STOCK in $VALID_STOCKS; do
         --output="${LOGS_DIR}/integrated_${NAME}_${STOCK}_%j.out" \
         --error="${LOGS_DIR}/integrated_${NAME}_${STOCK}_%j.err" \
         --partition="${PARTITION}" \
-        --export=ALL,REPO_DIR="${REPO_DIR}",PYTHON="${PYTHON}",INFER_PYTHON="${INFER_PYTHON}",STOCK="${STOCK}",DATA_DIR="${DATA_DIR}",CKPT_PATH="${CKPT_PATH}",CHECKPOINT_STEP="${CHECKPOINT_STEP}",RUN_NAME="${NAME}",BATCH_SIZE="${BATCH_SIZE}",N_COND_MSGS="${N_COND_MSGS}",N_GEN_MSGS="${N_GEN_MSGS}",N_SEQUENCES="${N_SEQUENCES}",SAMPLE_INDICES_FILE="${SAMPLE_INDICES_FILE}",SKIP_HF_COMPARE="${SKIP_HF_COMPARE}",SKIP_INFERENCE="${SKIP_INFERENCE}",SKIP_EXTENDED="${SKIP_EXTENDED}",INFER_OUTPUT_OVERRIDE="${INFER_OUTPUT_OVERRIDE}",TOKEN_MODE="${TOKEN_MODE}",WIDE_BOOK_DIR="${WIDE_BOOK_DIR}",WIDE_LEVELS="${WIDE_LEVELS}",LOBS5_DIR="${LOBS5_DIR}",NTFY_TOPIC_INFERENCE="${NTFY_TOPIC_INFERENCE}",NTFY_TOPIC_BENCHMARKS="${NTFY_TOPIC_BENCHMARKS}" \
+        --export=ALL,REPO_DIR="${REPO_DIR}",PYTHON="${PYTHON}",INFER_PYTHON="${INFER_PYTHON}",STOCK="${STOCK}",DATA_DIR="${DATA_DIR}",CKPT_PATH="${CKPT_PATH}",CHECKPOINT_STEP="${CHECKPOINT_STEP}",RUN_NAME="${NAME}",BATCH_SIZE="${BATCH_SIZE}",N_COND_MSGS="${N_COND_MSGS}",N_GEN_MSGS="${N_GEN_MSGS}",N_SEQUENCES="${N_SEQUENCES}",SAMPLE_INDICES_FILE="${SAMPLE_INDICES_FILE}",SKIP_HF_COMPARE="${SKIP_HF_COMPARE}",SKIP_INFERENCE="${SKIP_INFERENCE}",SKIP_EXTENDED="${SKIP_EXTENDED}",INFER_OUTPUT_OVERRIDE="${INFER_OUTPUT_OVERRIDE}",TOKEN_MODE="${TOKEN_MODE}",WIDE_BOOK_DIR="${STOCK_WIDE_BOOK_DIR}",WIDE_LEVELS="${WIDE_LEVELS}",LOBS5_DIR="${LOBS5_DIR}",NTFY_TOPIC_INFERENCE="${NTFY_TOPIC_INFERENCE}",NTFY_TOPIC_BENCHMARKS="${NTFY_TOPIC_BENCHMARKS}" \
         "${SCRIPT_DIR}/_integrated.batch")
 
     echo "  Job: ${JOB_ID} (${TOTAL_NODES} nodes, ${WALLTIME})"

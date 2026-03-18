@@ -11,14 +11,10 @@ Detailed reference for the LOBbench evaluation pipeline: **encoding swap → inf
 │   ├── _integrated.batch          # 5-phase SLURM batch script
 │   ├── config.sh                  # Shared config: Python, data paths, SLURM, excludes
 │   └── config.sh.template         # Template for custom configs
-├── LOBS5/
-│   ├── run_inference.py           # Autoregressive generation (4 GPU ranks per node)
-│   ├── lob/
-│   │   ├── encoding.py            # Active encoding (overwritten at job start)
-│   │   ├── encoding_22tok.py      # 22-token: vocab=12012, size as single token
-│   │   ├── encoding_24tok.py      # 24-token: vocab=2112, size as base-100 digit pair
-│   │   └── init_train.py          # Checkpoint loading (handles old/new metadata formats)
-│   └── inference_results/         # Output: data_real/, data_gen/, data_cond/ per run
+├── LOBS5/                         # Local workspace (writable — logs, encoding swap)
+│   ├── lob/encoding.py           # Active encoding (copied from canonical repo at job start)
+│   └── AlphaTrade/               # gymnax_exchange submodule (orderbook simulator)
+├── inference_results/             # Output: data_real/, data_gen/, data_cond/ per run
 ├── lob_bench/
 │   ├── run_bench.py               # Scoring driver (21 metrics × 3 distances, --n_workers 48)
 │   ├── run_plotting.py            # Generates plots from score pickles

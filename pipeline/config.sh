@@ -10,7 +10,7 @@
 # ============================================================
 # Data directories (per stock)
 # ============================================================
-# Jan 2026 test set: 8 tickers × 20 dates (14-col raw LOBSTER preprocessed)
+# Jan 2026 test set: 10 tickers × 20 dates (14-col raw LOBSTER preprocessed)
 # Must be raw .npy (not encoded tokens) — LOBbench needs real order_ids and prices.
 GOOG_DATA="${GOOG_DATA:-/lus/lfs1aip2/projects/s5e/lob_pipeline/data/GOOG_jan2026}"
 AAPL_DATA="${AAPL_DATA:-/lus/lfs1aip2/projects/s5e/lob_pipeline/data/AAPL_jan2026}"
@@ -20,6 +20,8 @@ META_DATA="${META_DATA:-/lus/lfs1aip2/projects/s5e/lob_pipeline/data/META_jan202
 TSLA_DATA="${TSLA_DATA:-/lus/lfs1aip2/projects/s5e/lob_pipeline/data/TSLA_jan2026}"
 MSFT_DATA="${MSFT_DATA:-/lus/lfs1aip2/projects/s5e/lob_pipeline/data/MSFT_jan2026}"
 AMD_DATA="${AMD_DATA:-/lus/lfs1aip2/projects/s5e/lob_pipeline/data/AMD_jan2026}"
+MU_DATA="${MU_DATA:-/lus/lfs1aip2/projects/s5e/lob_pipeline/data/MU_jan2026}"
+NFLX_DATA="${NFLX_DATA:-/lus/lfs1aip2/projects/s5e/lob_pipeline/data/NFLX_jan2026}"
 
 # Legacy Jan 2023 paths (kept for reference)
 # GOOG_DATA="${GOOG_DATA:-/lus/lfs1aip2/projects/s5e/lob_pipeline/data/GOOG_jan2023_raw}"

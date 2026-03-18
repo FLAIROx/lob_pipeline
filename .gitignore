@@ -68,4 +68,32 @@ core
 
 best_checkpoints/*
 pip_packages/*
+pip_packages_extra/
 logs/*
+
+# SLURM job outputs (root level)
+*.out
+*.err
+
+# Generated images
+*.png
+
+# Claude Code artifacts
+.claude/
+.worktrees/
+
+# Data and runtime directories
+data/
+inference_results/
+LOBS5/
+LOBS5_l100eval/
+lob_bench/
+lob_bench.orig/
+
+# Run-specific artifacts
+vocal-sun-271
+sleek-night-72.ini
+77
+
+# Comparison plots directories
+plots_*/

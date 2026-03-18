@@ -11,11 +11,8 @@ lob_pipeline/
 │   ├── _integrated.batch          # SLURM job: inference → scoring → plots
 │   ├── config.sh                  # Shared configuration (Python, data, SLURM)
 │   └── config.sh.template         # Template for custom configs
-├── LOBS5/                         # S5 model code + inference
-│   └── lob/
-│       ├── encoding.py            # Active encoding (swapped at job start)
-│       ├── encoding_22tok.py      # 22-token encoding (vocab=12012)
-│       └── encoding_24tok.py      # 24-token encoding (vocab=2112)
+├── LOBS5/                         # Local workspace (encoding swap, gymnax_exchange)
+│   └── lob/encoding.py           # Active encoding (swapped at job start from canonical repo)
 ├── lob_bench/                     # LOBbench scoring code
 ├── data/                          # Real LOBSTER data
 │   ├── GOOG_jan2026/              # 20 dates × 2 files (message + orderbook)
